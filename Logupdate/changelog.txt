@@ -1,0 +1,22 @@
+================================================================================
+REGIONALAPI CHANGELOG: VERSION 1.0.0 -> 1.0.2
+================================================================================
+Target: Minecraft 1.21.1 (Java 21) | Fabric, NeoForge, Forge
+
+--- [VERSION 1.0.1] ---
+* ADDED: Vanilla command integration for `/locate region <region_id>` with dynamic auto-completion suggestions.
+* ADDED: Instantaneous QuadTree lookup for unique regions and expanding ring Voronoi cell search for standard regions.
+* ADDED: Green clickable chat coordinates suggesting `/tp @s X ~ Z` with block distance calculation.
+* ADDED: F3 debug screen overlay displaying `Region: <id>` placed directly above `Biome:`.
+* ADDED: S2C network payload `ClientboundSyncPlayerRegionPacket` for authoritative multiplayer region sync.
+* ADDED: Client-side region tracking in `ClientRegionTracker`.
+* ADDED: English localization and fallback strings in `en_us.json`.
+* ENFORCED: Mandatory build version increment policy preserving all previous release artifacts.
+
+--- [VERSION 1.0.2] ---
+* ADDED: Full native support for Minecraft Forge 1.21.1 (`:forge` subproject) with ForgeGradle 6.0 (`net.minecraftforge:forge:1.21.1-52.1.20`).
+* ADDED: `ForgePlatformHelper` implementing Java SPI with Forge `PacketDistributor.PLAYER.with(player).send(...)`.
+* ADDED: Forge event bus integration with `RegionEvent.PlayerEnterRegionEvent` and `@Cancelable EntitySpawnInRegionEvent`.
+* ADDED: Forge networking using modern `ChannelBuilder.payloadChannel()` API.
+* ADDED: `RegionForgeGameplayListeners` handling Forge server lifecycle, player login, chunk unload, and tick events.
+* UPDATED: Root Gradle orchestration (`copyBuildJars`) to compile Fabric, NeoForge, and Forge simultaneously.
