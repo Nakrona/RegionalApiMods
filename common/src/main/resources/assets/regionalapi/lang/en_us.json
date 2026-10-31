@@ -1,0 +1,5 @@
+{
+  "commands.locate.region.success": "The nearest %s is at %s (%s blocks away)",
+  "commands.locate.region.invalid": "Unknown region: %s",
+  "commands.locate.region.not_found": "Could not find region %s within %s blocks"
+}

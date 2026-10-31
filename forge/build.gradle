@@ -1,0 +1,44 @@
+plugins {
+    id 'net.minecraftforge.gradle'
+}
+
+base {
+    archivesName = "${project.mod_id}-forge"
+}
+
+minecraft {
+    mappings channel: 'official', version: project.minecraft_version
+    copyIdeResources = true
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${project.minecraft_version}-${project.forge_version}"
+    compileOnly project(':common')
+}
+
+tasks.named('compileJava', JavaCompile) {
+    source(project(':common').sourceSets.main.allSource)
+}
+
+processResources {
+    from project(':common').sourceSets.main.resources
+
+    var replaceProperties = [
+            minecraft_version      : project.minecraft_version,
+            minecraft_version_range: project.minecraft_version_range,
+            forge_version          : project.forge_version,
+            forge_version_range    : project.forge_version_range,
+            loader_version_range   : project.loader_version_range,
+            mod_id                 : project.mod_id,
+            mod_name               : project.mod_name,
+            mod_license            : project.mod_license,
+            mod_version            : project.mod_version,
+            mod_authors            : project.mod_authors,
+            mod_description        : project.mod_description
+    ]
+    inputs.properties replaceProperties
+
+    filesMatching(['META-INF/mods.toml']) {
+        expand replaceProperties
+    }
+}

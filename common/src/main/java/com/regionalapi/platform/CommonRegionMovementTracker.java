@@ -103,6 +103,9 @@ public final class CommonRegionMovementTracker {
                     newRegionId,
                     newDef
             );
+            if (newDef != null) {
+                IPlatformHelper.getInstance().sendSyncPlayerRegionPacket(player, newDef.id());
+            }
         }
     }
 }

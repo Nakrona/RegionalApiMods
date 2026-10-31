@@ -1,6 +1,8 @@
 package com.regionalapi.neoforge;
 
 import com.regionalapi.RegionalModConstants;
+import com.regionalapi.client.ClientRegionTracker;
+import com.regionalapi.network.ClientboundSyncPlayerRegionPacket;
 import com.regionalapi.network.ClientboundSyncRegionalSeedPacket;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
@@ -21,11 +23,16 @@ public final class RegionalNeoForgeMod {
     }
 
     private void onRegisterPayloads(final RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("1.0.0").optional();
+        final PayloadRegistrar registrar = event.registrar(RegionalModConstants.MOD_ID).optional();
         registrar.playToClient(
                 ClientboundSyncRegionalSeedPacket.TYPE,
                 ClientboundSyncRegionalSeedPacket.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> ClientboundSyncRegionalSeedPacket.setClientRegionalSeed(payload.regionalSeed()))
+        );
+        registrar.playToClient(
+                ClientboundSyncPlayerRegionPacket.TYPE,
+                ClientboundSyncPlayerRegionPacket.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(() -> ClientRegionTracker.setCurrentRegion(payload.regionId()))
         );
     }
 }

@@ -1,6 +1,7 @@
 plugins {
     id 'fabric-loom' version '1.8.13' apply false
     id 'net.neoforged.moddev' version '2.0.42-beta' apply false
+    id 'net.minecraftforge.gradle' version '[6.0.24,6.2)' apply false
 }
 
 subprojects {
@@ -18,6 +19,10 @@ subprojects {
         maven {
             name = 'Fabric'
             url = 'https://maven.fabricmc.net/'
+        }
+        maven {
+            name = 'Forge'
+            url = 'https://maven.minecraftforge.net/'
         }
         maven {
             name = 'Sponge Snapshots'
@@ -38,10 +43,14 @@ subprojects {
 }
 
 tasks.register('copyBuildJars') {
-    dependsOn ':neoforge:build', ':fabric:build'
+    dependsOn ':neoforge:build', ':fabric:build', ':forge:build'
     doLast {
         def destDir = file("${rootDir}/../BuildVersion")
+        def versionDir = file("${rootDir}/../BuildVersion/${project.minecraft_version}")
         destDir.mkdirs()
+        versionDir.mkdirs()
+
+        // NeoForge
         copy {
             from project(':neoforge').layout.buildDirectory.dir('libs')
             into destDir
@@ -55,6 +64,20 @@ tasks.register('copyBuildJars') {
             }
         }
         copy {
+            from project(':neoforge').layout.buildDirectory.dir('libs')
+            into versionDir
+            include "${project.mod_id}-neoforge-${project.mod_version}.jar"
+            include "${project.mod_id}-${project.mod_version}.jar"
+            rename { String name ->
+                if (name == "${project.mod_id}-${project.mod_version}.jar") {
+                    return "${project.mod_id}-neoforge-${project.mod_version}.jar"
+                }
+                return name
+            }
+        }
+
+        // Fabric
+        copy {
             from project(':fabric').layout.buildDirectory.dir('libs')
             into destDir
             include "${project.mod_id}-fabric-${project.mod_version}.jar"
@@ -62,6 +85,44 @@ tasks.register('copyBuildJars') {
             rename { String name ->
                 if (name == "${project.mod_id}-${project.mod_version}.jar") {
                     return "${project.mod_id}-fabric-${project.mod_version}.jar"
+                }
+                return name
+            }
+        }
+        copy {
+            from project(':fabric').layout.buildDirectory.dir('libs')
+            into versionDir
+            include "${project.mod_id}-fabric-${project.mod_version}.jar"
+            include "${project.mod_id}-${project.mod_version}.jar"
+            rename { String name ->
+                if (name == "${project.mod_id}-${project.mod_version}.jar") {
+                    return "${project.mod_id}-fabric-${project.mod_version}.jar"
+                }
+                return name
+            }
+        }
+
+        // Forge
+        copy {
+            from project(':forge').layout.buildDirectory.dir('libs')
+            into destDir
+            include "${project.mod_id}-forge-${project.mod_version}.jar"
+            include "${project.mod_id}-${project.mod_version}.jar"
+            rename { String name ->
+                if (name == "${project.mod_id}-${project.mod_version}.jar") {
+                    return "${project.mod_id}-forge-${project.mod_version}.jar"
+                }
+                return name
+            }
+        }
+        copy {
+            from project(':forge').layout.buildDirectory.dir('libs')
+            into versionDir
+            include "${project.mod_id}-forge-${project.mod_version}.jar"
+            include "${project.mod_id}-${project.mod_version}.jar"
+            rename { String name ->
+                if (name == "${project.mod_id}-${project.mod_version}.jar") {
+                    return "${project.mod_id}-forge-${project.mod_version}.jar"
                 }
                 return name
             }

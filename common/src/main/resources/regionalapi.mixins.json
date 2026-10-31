@@ -13,6 +13,9 @@
     "MixinChunkSerializer",
     "MixinServerPlayer"
   ],
+  "client": [
+    "client.MixinDebugScreenOverlay"
+  ],
   "injectors": {
     "defaultRequire": 1
   }

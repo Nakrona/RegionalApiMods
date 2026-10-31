@@ -1,6 +1,7 @@
 package com.regionalapi.neoforge;
 
 import com.regionalapi.api.RegionalApi;
+import com.regionalapi.command.LocateRegionCommand;
 import com.regionalapi.core.cache.ThreadLocalRegionCache;
 import com.regionalapi.core.region.RegionDefinition;
 import com.regionalapi.core.region.RegionRegistry;
@@ -13,6 +14,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.level.ServerLevelAccessor;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.EntityEvent;
 import net.neoforged.neoforge.event.entity.living.FinalizeSpawnEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
@@ -43,6 +45,11 @@ public final class RegionGameplayListeners {
     @SubscribeEvent
     public void onServerStopped(ServerStoppedEvent event) {
         RegionalApi.getInstance().clearServerCache();
+    }
+
+    @SubscribeEvent
+    public void onRegisterCommands(RegisterCommandsEvent event) {
+        LocateRegionCommand.register(event.getDispatcher());
     }
 
     @SubscribeEvent

@@ -1,10 +1,12 @@
 package com.regionalapi.fabric;
 
 import com.regionalapi.core.region.RegionDefinition;
+import com.regionalapi.network.ClientboundSyncPlayerRegionPacket;
 import com.regionalapi.network.ClientboundSyncRegionalSeedPacket;
 import com.regionalapi.platform.IPlatformHelper;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobSpawnType;
@@ -23,6 +25,11 @@ public final class FabricPlatformHelper implements IPlatformHelper {
     @Override
     public void sendSyncSeedPacket(ServerPlayer player, long saltedRegionalSeed) {
         ServerPlayNetworking.send(player, new ClientboundSyncRegionalSeedPacket(saltedRegionalSeed));
+    }
+
+    @Override
+    public void sendSyncPlayerRegionPacket(ServerPlayer player, ResourceLocation regionId) {
+        ServerPlayNetworking.send(player, new ClientboundSyncPlayerRegionPacket(regionId));
     }
 
     @Override

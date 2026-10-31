@@ -2,12 +2,15 @@ package com.regionalapi.fabric;
 
 import com.regionalapi.RegionalModConstants;
 import com.regionalapi.api.RegionalApi;
+import com.regionalapi.command.LocateRegionCommand;
 import com.regionalapi.core.cache.ThreadLocalRegionCache;
 import com.regionalapi.core.region.RegionRegistry;
+import com.regionalapi.network.ClientboundSyncPlayerRegionPacket;
 import com.regionalapi.network.ClientboundSyncRegionalSeedPacket;
 import com.regionalapi.platform.CommonRegionMovementTracker;
 import com.regionalapi.platform.IPlatformHelper;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
@@ -23,13 +26,22 @@ public final class RegionalFabricMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        // 1. Register S2C payload type
+        // 1. Register S2C payload types
         PayloadTypeRegistry.playS2C().register(
                 ClientboundSyncRegionalSeedPacket.TYPE,
                 ClientboundSyncRegionalSeedPacket.STREAM_CODEC
         );
+        PayloadTypeRegistry.playS2C().register(
+                ClientboundSyncPlayerRegionPacket.TYPE,
+                ClientboundSyncPlayerRegionPacket.STREAM_CODEC
+        );
 
-        // 2. Server lifecycle listeners
+        // 2. Command registration
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
+            LocateRegionCommand.register(dispatcher);
+        });
+
+        // 3. Server lifecycle listeners
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
             long rawWorldSeed = server.getWorldData().worldGenOptions().seed();
             activeSaltedRegionalSeed = ClientboundSyncRegionalSeedPacket.computeSaltedRegionalSeed(rawWorldSeed);

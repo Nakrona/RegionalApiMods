@@ -34,6 +34,14 @@ public interface IPlatformHelper {
     void sendSyncSeedPacket(ServerPlayer player, long saltedRegionalSeed);
 
     /**
+     * Transmits the player's current authoritative region identifier to the client.
+     *
+     * @param player   The recipient player.
+     * @param regionId The current {@link net.minecraft.resources.ResourceLocation} region identifier.
+     */
+    void sendSyncPlayerRegionPacket(ServerPlayer player, net.minecraft.resources.ResourceLocation regionId);
+
+    /**
      * Dispatches the player region transition event to the platform's native event bus or callbacks.
      */
     void postPlayerRegionEnter(

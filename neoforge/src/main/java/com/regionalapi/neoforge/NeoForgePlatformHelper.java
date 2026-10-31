@@ -2,8 +2,10 @@ package com.regionalapi.neoforge;
 
 import com.regionalapi.api.RegionEvent;
 import com.regionalapi.core.region.RegionDefinition;
+import com.regionalapi.network.ClientboundSyncPlayerRegionPacket;
 import com.regionalapi.network.ClientboundSyncRegionalSeedPacket;
 import com.regionalapi.platform.IPlatformHelper;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobSpawnType;
@@ -25,6 +27,11 @@ public final class NeoForgePlatformHelper implements IPlatformHelper {
     @Override
     public void sendSyncSeedPacket(ServerPlayer player, long saltedRegionalSeed) {
         PacketDistributor.sendToPlayer(player, new ClientboundSyncRegionalSeedPacket(saltedRegionalSeed));
+    }
+
+    @Override
+    public void sendSyncPlayerRegionPacket(ServerPlayer player, ResourceLocation regionId) {
+        PacketDistributor.sendToPlayer(player, new ClientboundSyncPlayerRegionPacket(regionId));
     }
 
     @Override
