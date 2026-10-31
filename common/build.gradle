@@ -1,0 +1,14 @@
+plugins {
+    id 'fabric-loom'
+}
+
+base {
+    archivesName = "${project.mod_id}-common"
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings loom.officialMojangMappings()
+    compileOnly "org.spongepowered:mixin:0.8.5"
+}
+

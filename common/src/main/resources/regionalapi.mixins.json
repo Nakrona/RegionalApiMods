@@ -1,0 +1,19 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.regionalapi.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "refmap": "regionalapi-fabric-refmap.json",
+  "mixins": [
+    "MixinBiomeSource",
+    "MixinMultiNoiseBiomeSource",
+    "MixinLevelChunkSection",
+    "MixinChunkAccess",
+    "MixinLevelChunk",
+    "MixinChunkSerializer",
+    "MixinServerPlayer"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
