@@ -37,7 +37,7 @@ public final class RegionGameplayListeners {
         activeSaltedRegionalSeed = ClientboundSyncRegionalSeedPacket.computeSaltedRegionalSeed(rawWorldSeed);
 
         // Use the salted regional seed as the deterministic spatial seed so client minimaps and server match
-        ThreadLocalRegionCache.setActiveWorldSeed(activeSaltedRegionalSeed);
+        ThreadLocalRegionCache.setAuthoritativeRegionalSeed(activeSaltedRegionalSeed);
         RegionalApi.getInstance().clearServerCache();
         RegionRegistry.getInstance().freezeAndIndex(server);
     }
@@ -45,6 +45,7 @@ public final class RegionGameplayListeners {
     @SubscribeEvent
     public void onServerStopped(ServerStoppedEvent event) {
         RegionalApi.getInstance().clearServerCache();
+        ThreadLocalRegionCache.resetSeed();
     }
 
     @SubscribeEvent

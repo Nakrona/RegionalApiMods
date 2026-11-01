@@ -201,7 +201,7 @@ public final class RegionRegistry {
         ServerLevel overworld = server.overworld();
         long rawWorldSeed = server.getWorldData().worldGenOptions().seed();
         long regionalSeed = ClientboundSyncRegionalSeedPacket.computeSaltedRegionalSeed(rawWorldSeed);
-        ThreadLocalRegionCache.setActiveWorldSeed(regionalSeed);
+        ThreadLocalRegionCache.setAuthoritativeRegionalSeed(regionalSeed);
         UniqueRegionSavedData savedData = (overworld != null) ? UniqueRegionSavedData.getOrCreate(overworld) : null;
 
         // Sort non-fallback regions deterministically by ResourceLocation string

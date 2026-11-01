@@ -36,7 +36,7 @@ public final class RegionForgeGameplayListeners {
         long rawWorldSeed = server.getWorldData().worldGenOptions().seed();
         activeSaltedRegionalSeed = ClientboundSyncRegionalSeedPacket.computeSaltedRegionalSeed(rawWorldSeed);
 
-        ThreadLocalRegionCache.setActiveWorldSeed(activeSaltedRegionalSeed);
+        ThreadLocalRegionCache.setAuthoritativeRegionalSeed(activeSaltedRegionalSeed);
         RegionalApi.getInstance().clearServerCache();
         RegionRegistry.getInstance().freezeAndIndex(server);
     }
@@ -44,6 +44,7 @@ public final class RegionForgeGameplayListeners {
     @SubscribeEvent
     public void onServerStopped(ServerStoppedEvent event) {
         RegionalApi.getInstance().clearServerCache();
+        ThreadLocalRegionCache.resetSeed();
     }
 
     @SubscribeEvent

@@ -58,7 +58,9 @@ public final class ClientRegionTracker {
                             targetPos.getX(),
                             targetPos.getZ()
                     );
-                    return "Region: " + localRegion;
+                    if (localRegion != null && !RegionRegistry.FALLBACK_WILDS_LOCATION.equals(localRegion)) {
+                        return "Region: " + localRegion;
+                    }
                 }
             }
         }

@@ -55,7 +55,7 @@ public record ClientboundSyncRegionalSeedPacket(long regionalSeed) implements Cu
      */
     public static void setClientRegionalSeed(long seed) {
         clientRegionalSeed = seed;
-        com.regionalapi.core.cache.ThreadLocalRegionCache.setActiveWorldSeed(seed);
+        com.regionalapi.core.cache.ThreadLocalRegionCache.setAuthoritativeRegionalSeed(seed);
     }
 
     @Override

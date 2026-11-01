@@ -50,13 +50,14 @@ public final class RegionalFabricMod implements ModInitializer {
             long rawWorldSeed = server.getWorldData().worldGenOptions().seed();
             activeSaltedRegionalSeed = ClientboundSyncRegionalSeedPacket.computeSaltedRegionalSeed(rawWorldSeed);
 
-            ThreadLocalRegionCache.setActiveWorldSeed(activeSaltedRegionalSeed);
+            ThreadLocalRegionCache.setAuthoritativeRegionalSeed(activeSaltedRegionalSeed);
             RegionalApi.getInstance().clearServerCache();
             RegionRegistry.getInstance().freezeAndIndex(server);
         });
 
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
             RegionalApi.getInstance().clearServerCache();
+            ThreadLocalRegionCache.resetSeed();
         });
 
         // 3. Player login listener

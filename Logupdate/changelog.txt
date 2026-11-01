@@ -1,5 +1,5 @@
 ================================================================================
-REGIONALAPI CHANGELOG: VERSION 1.0.0 -> 1.0.5
+REGIONALAPI CHANGELOG: VERSION 1.0.0 -> 1.0.6
 ================================================================================
 Target: Minecraft 1.21.1 (Java 21) | Fabric, NeoForge, Forge
 
@@ -45,3 +45,11 @@ Target: Minecraft 1.21.1 (Java 21) | Fabric, NeoForge, Forge
 * FIXED: F3 debug overlay in `ClientRegionTracker` now targets the exact player block position (`minecraft.player.blockPosition()`), eliminating camera-vs-feet border discrepancies.
 * FIXED: Bounded Laguerre power distance weight bias in `VoronoiEngine2D` to prevent radical axis drift outside the 3x3 neighborhood, preserving cell convexity across macro weights.
 * FIXED: `UniqueRegionQuadTree` dominance resolution, ensuring unique regions reliably override background Voronoi tessellation within their defined weight radius.
+
+--- [VERSION 1.0.6] ---
+* FIXED: Resolved dual-layer region desynchronization where entering a new chunk briefly displayed an incorrect region (e.g., Galar) on F3 before snapping to the correct region (e.g., Johto).
+* ADDED: Authoritative seed locking (`ThreadLocalRegionCache.setAuthoritativeRegionalSeed()`) and seed guard protection in `ThreadLocalRegionCache.setActiveWorldSeed()`. External callers and third-party mods passing raw unsalted seeds (such as `context.seed()` during structure generation) can no longer corrupt the global active regional seed mid-session.
+* ADDED: Clean lifecycle reset (`ThreadLocalRegionCache.resetSeed()`) on server stop and client disconnect across Fabric, NeoForge, and Forge adapters.
+* FIXED: Fallback handling in `ClientRegionTracker.getDebugRegionString()` so fallback Wilds gracefully defer to authoritative server-synced player region (`currentRegionId`).
+* ENFORCED: 100% mathematical Voronoi parity and zero-GC performance across all worker threads, server threads, and client render threads.
+

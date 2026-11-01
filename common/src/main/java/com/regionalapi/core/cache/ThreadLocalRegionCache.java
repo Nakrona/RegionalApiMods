@@ -30,6 +30,7 @@ public final class ThreadLocalRegionCache {
      * Global volatile active world seed updated on server start for lock-free worker access.
      */
     private static volatile long activeWorldSeed = 0L;
+    private static volatile boolean seedLocked = false;
 
     private final long[] keys = new long[CACHE_SIZE]; // ChunkPos.asLong(cx, cz), initialized to Long.MIN_VALUE
     private final short[][] quartGrids = new short[CACHE_SIZE][16]; // Pre-allocated 4x4 horizontal QuartPos grid per chunk
@@ -49,15 +50,62 @@ public final class ThreadLocalRegionCache {
     }
 
     /**
+     * Authoritatively sets and locks the 64-bit salted regional seed upon server startup or
+     * receipt of the clientbound sync seed packet.
+     *
+     * @param regionalSeed The salted 64-bit regional seed.
+     */
+    public static void setAuthoritativeRegionalSeed(long regionalSeed) {
+        if (regionalSeed != 0L) {
+            activeWorldSeed = regionalSeed;
+            seedLocked = true;
+            CACHE_EPOCH.incrementAndGet();
+        }
+    }
+
+    /**
      * Sets the active world seed for all worldgen worker threads and invalidates stale slots lazily.
+     * Protects the authoritative regional seed against clobbering from external callers passing raw seeds.
      *
      * @param worldSeed The 64-bit world seed.
      */
     public static void setActiveWorldSeed(long worldSeed) {
+        if (worldSeed == 0L) {
+            return;
+        }
+
+        if (seedLocked) {
+            if (activeWorldSeed == worldSeed) {
+                return;
+            }
+            // Guard against clobbering: check if the incoming seed is the raw unsalted seed
+            if (com.regionalapi.network.ClientboundSyncRegionalSeedPacket.computeSaltedRegionalSeed(worldSeed) == activeWorldSeed) {
+                return;
+            }
+            // Seed is locked authoritatively; reject arbitrary mid-session overrides
+            return;
+        }
+
         if (activeWorldSeed != worldSeed) {
             activeWorldSeed = worldSeed;
             CACHE_EPOCH.incrementAndGet();
         }
+    }
+
+    /**
+     * Resets the active world seed and unlocks the seed state upon server shutdown or client disconnect.
+     */
+    public static void resetSeed() {
+        activeWorldSeed = 0L;
+        seedLocked = false;
+        CACHE_EPOCH.incrementAndGet();
+    }
+
+    /**
+     * Returns whether the active regional seed is authoritatively locked.
+     */
+    public static boolean isSeedLocked() {
+        return seedLocked;
     }
 
     public static long getActiveWorldSeed() {
