@@ -14,10 +14,17 @@ import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.network.PacketDistributor;
 
+import java.nio.file.Path;
+
 /**
  * NeoForge implementation of {@link IPlatformHelper}.
  */
 public final class NeoForgePlatformHelper implements IPlatformHelper {
+
+    @Override
+    public Path getConfigDirectory() {
+        return net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get();
+    }
 
     @Override
     public boolean isModLoaded(String modId) {

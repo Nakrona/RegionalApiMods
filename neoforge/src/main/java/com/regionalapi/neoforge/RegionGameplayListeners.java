@@ -76,7 +76,11 @@ public final class RegionGameplayListeners {
         if (!event.didChunkChange() || !(event.getEntity() instanceof ServerPlayer player)) {
             return;
         }
-        CommonRegionMovementTracker.onPlayerEnterChunk(player, event.getNewPos().x(), event.getNewPos().z());
+        CommonRegionMovementTracker.onPlayerEnterChunk(
+                player,
+                player.getBlockX() >> 4,
+                player.getBlockZ() >> 4
+        );
     }
 
     @SubscribeEvent

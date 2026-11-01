@@ -12,10 +12,17 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.level.ServerLevelAccessor;
 
+import java.nio.file.Path;
+
 /**
  * Fabric implementation of {@link IPlatformHelper}.
  */
 public final class FabricPlatformHelper implements IPlatformHelper {
+
+    @Override
+    public Path getConfigDirectory() {
+        return FabricLoader.getInstance().getConfigDir();
+    }
 
     @Override
     public boolean isModLoaded(String modId) {

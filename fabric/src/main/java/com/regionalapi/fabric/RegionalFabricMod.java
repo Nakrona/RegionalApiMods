@@ -3,6 +3,7 @@ package com.regionalapi.fabric;
 import com.regionalapi.RegionalModConstants;
 import com.regionalapi.api.RegionalApi;
 import com.regionalapi.command.LocateRegionCommand;
+import com.regionalapi.core.config.RegionalApiConfig;
 import com.regionalapi.core.cache.ThreadLocalRegionCache;
 import com.regionalapi.core.region.RegionRegistry;
 import com.regionalapi.network.ClientboundSyncPlayerRegionPacket;
@@ -26,6 +27,9 @@ public final class RegionalFabricMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        // Load or initialize regionalapi.json config
+        RegionalApiConfig.loadOrCreate(IPlatformHelper.getInstance().getConfigDirectory());
+
         // 1. Register S2C payload types
         PayloadTypeRegistry.playS2C().register(
                 ClientboundSyncRegionalSeedPacket.TYPE,

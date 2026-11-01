@@ -77,17 +77,39 @@ public abstract class MixinChunkSerializer {
         }
 
         if (chunk instanceof IRegionChunkData chunkData) {
+            com.regionalapi.core.cache.ThreadLocalRegionCache cache = com.regionalapi.core.cache.ThreadLocalRegionCache.get();
+            int slot = cache.ensureChunkSlot(chunkPos.x, chunkPos.z);
+            boolean expectedHomogeneous = cache.isSlotHomogeneous(slot);
+
             byte[] bytes = compoundTag.getByteArray(REGIONAL_DATA_TAG);
-            if (bytes.length == 3 && bytes[0] == 1) {
+            if (expectedHomogeneous && bytes.length == 3 && bytes[0] == 1) {
                 short regionId = (short) (((bytes[1] & 0xFF) << 8) | (bytes[2] & 0xFF));
-                chunkData.regional$setHomogeneous(regionId);
-            } else if (bytes.length == 33 && bytes[0] == 0) {
+                if (regionId == cache.getSlotFirstRegionId(slot)) {
+                    chunkData.regional$setHomogeneous(regionId);
+                    return;
+                }
+            } else if (!expectedHomogeneous && bytes.length == 33 && bytes[0] == 0) {
+                short[] expectedGrid = cache.getSlotQuartGrid(slot);
                 short[] grid = new short[16];
                 ByteBuffer buf = ByteBuffer.wrap(bytes, 1, 32);
+                boolean matches = true;
                 for (int i = 0; i < 16; i++) {
                     grid[i] = buf.getShort();
+                    if (grid[i] != expectedGrid[i]) {
+                        matches = false;
+                    }
                 }
-                chunkData.regional$setBorder(grid);
+                if (matches) {
+                    chunkData.regional$setBorder(grid);
+                    return;
+                }
+            }
+
+            // If saved NBT is stale (e.g. config, weight, or cellShift changed), populate fresh data immediately
+            if (expectedHomogeneous) {
+                chunkData.regional$setHomogeneous(cache.getSlotFirstRegionId(slot));
+            } else {
+                chunkData.regional$setBorder(cache.getSlotQuartGrid(slot));
             }
         }
     }

@@ -21,45 +21,50 @@ public final class CommonRegionMovementTracker {
     }
 
     /**
-     * Movement Tracking Optimization: evaluates chunk homogeneity when a player crosses a chunk section boundary.
-     * If {@code isHomogeneous == true}, resolves region transition in O(1) and disables per-tick polling.
+     * Evaluates player chunk transition.
+     * Always resolves coordinates strictly from the player's true current block position as the
+     * single source of truth, guaranteeing quadrant indices match the chunk boundaries and preventing
+     * transient border-flip artifacts.
      */
     public static void onPlayerEnterChunk(ServerPlayer player, int chunkX, int chunkZ) {
         if (!(player instanceof IPlayerRegionTracker tracker)) {
             return;
         }
 
-        ServerLevel level = player.serverLevel();
-        ChunkAccess chunk = level.getChunkSource().getChunkNow(chunkX, chunkZ);
-
-        int qx = player.getBlockX() >> 2;
-        int qz = player.getBlockZ() >> 2;
+        int blockX = player.getBlockX();
+        int blockZ = player.getBlockZ();
+        int actualChunkX = blockX >> 4;
+        int actualChunkZ = blockZ >> 4;
+        int qx = blockX >> 2;
+        int qz = blockZ >> 2;
         tracker.regional$updateLastQuartPos(qx, qz);
 
+        ServerLevel level = player.serverLevel();
+        ChunkAccess chunk = level.getChunkSource().getChunkNow(actualChunkX, actualChunkZ);
+
+        short currentRegionId;
         if (chunk != null) {
             IRegionChunkData chunkData = ChunkRegionAttachment.getOrPopulate(chunk);
-            if (chunkData.regional$isHomogeneous()) {
-                tracker.regional$setInBorderChunk(false);
-                checkAndFirePlayerRegionTransition(player, tracker, chunkData.regional$getSingleRegionId());
-            } else {
-                tracker.regional$setInBorderChunk(true);
-                short currentRegionId = chunkData.regional$getRegionAtQuart(qx, qz);
-                checkAndFirePlayerRegionTransition(player, tracker, currentRegionId);
-            }
+            boolean homogeneous = chunkData.regional$isHomogeneous();
+            tracker.regional$setInBorderChunk(!homogeneous);
+            currentRegionId = homogeneous
+                    ? chunkData.regional$getSingleRegionId()
+                    : chunkData.regional$getRegionAtQuart(qx, qz);
         } else {
             ThreadLocalRegionCache cache = ThreadLocalRegionCache.get();
-            int slot = cache.ensureChunkSlot(chunkX, chunkZ);
+            int slot = cache.ensureChunkSlot(actualChunkX, actualChunkZ);
             boolean homogeneous = cache.isSlotHomogeneous(slot);
             tracker.regional$setInBorderChunk(!homogeneous);
-            short currentRegionId = homogeneous
+            currentRegionId = homogeneous
                     ? cache.getSlotFirstRegionId(slot)
                     : cache.getRegionAtQuart(qx, qz);
-            checkAndFirePlayerRegionTransition(player, tracker, currentRegionId);
         }
+
+        checkAndFirePlayerRegionTransition(player, tracker, currentRegionId);
     }
 
     /**
-     * Conditional Border-Chunk Polling: returns immediately at the first boolean check when the player
+     * Conditional Border-Chunk Polling: returns immediately when the player
      * is inside a homogeneous chunk (`!tracker.regional$isInBorderChunk()`). Only evaluates QuartPos boundaries
      * when the player is actively inside a border chunk (`isHomogeneous == false`) and has moved into
      * a different 4x4 QuartPos cell.
@@ -69,8 +74,10 @@ public final class CommonRegionMovementTracker {
             return;
         }
 
-        int currentQuartX = player.getBlockX() >> 2;
-        int currentQuartZ = player.getBlockZ() >> 2;
+        int blockX = player.getBlockX();
+        int blockZ = player.getBlockZ();
+        int currentQuartX = blockX >> 2;
+        int currentQuartZ = blockZ >> 2;
         if (currentQuartX == tracker.regional$getLastQuartX() && currentQuartZ == tracker.regional$getLastQuartZ()) {
             return;
         }
@@ -79,8 +86,8 @@ public final class CommonRegionMovementTracker {
         ServerLevel serverLevel = player.serverLevel();
         short newRegionId = RegionalApi.getInstance().getRegionRawId(
                 serverLevel,
-                player.getBlockX(),
-                player.getBlockZ()
+                blockX,
+                blockZ
         );
         checkAndFirePlayerRegionTransition(player, tracker, newRegionId);
     }

@@ -228,7 +228,7 @@ public final class UniqueRegionQuadTree {
             }
 
             short winner = -1;
-            long currentBest = bestPowerDist;
+            long bestUniquePower = Long.MAX_VALUE;
             for (int i = 0; i < this.entryCount; i++) {
                 Entry e = this.entries[i];
                 if (e.containsPointInBounds(qx, qz)) {
@@ -237,8 +237,8 @@ public final class UniqueRegionQuadTree {
                     long distSq = dx * dx + dz * dz;
                     if (distSq <= e.maxRadiusSqQuart) {
                         long power = distSq - e.weightSquaredQuart;
-                        if (power < currentBest) {
-                            currentBest = power;
+                        if (power < bestUniquePower) {
+                            bestUniquePower = power;
                             winner = e.regionRawId;
                         }
                     }
@@ -265,7 +265,7 @@ public final class UniqueRegionQuadTree {
             }
 
             long winnerToken = -1L;
-            long currentBest = bestPowerDist;
+            long bestUniquePower = Long.MAX_VALUE;
             for (int i = 0; i < this.entryCount; i++) {
                 Entry e = this.entries[i];
                 if (e.containsPointInBounds(qx, qz)) {
@@ -274,8 +274,8 @@ public final class UniqueRegionQuadTree {
                     long distSq = dx * dx + dz * dz;
                     if (distSq <= e.maxRadiusSqQuart) {
                         long power = distSq - e.weightSquaredQuart;
-                        if (power < currentBest) {
-                            currentBest = power;
+                        if (power < bestUniquePower) {
+                            bestUniquePower = power;
                             winnerToken = e.deterministicToken;
                         }
                     }

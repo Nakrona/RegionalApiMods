@@ -6,6 +6,7 @@ import com.regionalapi.core.region.RegionRegistry;
 import net.minecraft.world.level.ChunkPos;
 
 import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Lock-free, zero-allocation thread-local direct-mapped ring buffer for worldgen threads.
@@ -23,6 +24,8 @@ public final class ThreadLocalRegionCache {
     private static final ThreadLocal<ThreadLocalRegionCache> THREAD_CACHE =
             ThreadLocal.withInitial(ThreadLocalRegionCache::new);
 
+    private static final AtomicLong CACHE_EPOCH = new AtomicLong(1L);
+
     /**
      * Global volatile active world seed updated on server start for lock-free worker access.
      */
@@ -32,9 +35,17 @@ public final class ThreadLocalRegionCache {
     private final short[][] quartGrids = new short[CACHE_SIZE][16]; // Pre-allocated 4x4 horizontal QuartPos grid per chunk
     private final boolean[] homogeneousFlags = new boolean[CACHE_SIZE];
     private long cachedSeedSnapshot = Long.MIN_VALUE;
+    private long cachedEpochSnapshot = 0L;
 
     public ThreadLocalRegionCache() {
         Arrays.fill(this.keys, Long.MIN_VALUE);
+    }
+
+    /**
+     * Invalidates all thread-local cached slots across all worker and render threads atomically.
+     */
+    public static void invalidateAll() {
+        CACHE_EPOCH.incrementAndGet();
     }
 
     /**
@@ -43,7 +54,10 @@ public final class ThreadLocalRegionCache {
      * @param worldSeed The 64-bit world seed.
      */
     public static void setActiveWorldSeed(long worldSeed) {
-        activeWorldSeed = worldSeed;
+        if (activeWorldSeed != worldSeed) {
+            activeWorldSeed = worldSeed;
+            CACHE_EPOCH.incrementAndGet();
+        }
     }
 
     public static long getActiveWorldSeed() {
@@ -56,9 +70,11 @@ public final class ThreadLocalRegionCache {
     public static ThreadLocalRegionCache get() {
         ThreadLocalRegionCache cache = THREAD_CACHE.get();
         long seed = activeWorldSeed;
-        if (cache.cachedSeedSnapshot != seed) {
+        long epoch = CACHE_EPOCH.get();
+        if (cache.cachedSeedSnapshot != seed || cache.cachedEpochSnapshot != epoch) {
             Arrays.fill(cache.keys, Long.MIN_VALUE);
             cache.cachedSeedSnapshot = seed;
+            cache.cachedEpochSnapshot = epoch;
         }
         return cache;
     }

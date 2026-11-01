@@ -108,8 +108,9 @@ public final class LocateRegionCommand {
 
         int originQuartX = originX >> 2;
         int originQuartZ = originZ >> 2;
-        int centerGridX = originQuartX >> VoronoiEngine2D.DEFAULT_CELL_SHIFT;
-        int centerGridZ = originQuartZ >> VoronoiEngine2D.DEFAULT_CELL_SHIFT;
+        int cellShift = VoronoiEngine2D.getActiveCellShift();
+        int centerGridX = originQuartX >> cellShift;
+        int centerGridZ = originQuartZ >> cellShift;
 
         int closestBlockX = Integer.MIN_VALUE;
         int closestBlockZ = Integer.MIN_VALUE;
@@ -175,7 +176,7 @@ public final class LocateRegionCommand {
                 "commands.locate.region.not_found",
                 "Could not find region %s within %s blocks",
                 regionId.toString(),
-                MAX_SEARCH_CELL_RADIUS * 512
+                MAX_SEARCH_CELL_RADIUS * (VoronoiEngine2D.getActiveCellSizeQuarts() << 2)
         ));
         return 0;
     }
@@ -197,10 +198,15 @@ public final class LocateRegionCommand {
             return -1.0;
         }
 
-        int seedQX = (gx << VoronoiEngine2D.DEFAULT_CELL_SHIFT) + VoronoiEngine2D.DEFAULT_JITTER_OFFSET
-                + DeterministicHash.extractJitterX(cellHash, VoronoiEngine2D.DEFAULT_JITTER_MASK);
-        int seedQZ = (gz << VoronoiEngine2D.DEFAULT_CELL_SHIFT) + VoronoiEngine2D.DEFAULT_JITTER_OFFSET
-                + DeterministicHash.extractJitterZ(cellHash, VoronoiEngine2D.DEFAULT_JITTER_MASK);
+        int cellShift = VoronoiEngine2D.getActiveCellShift();
+        int cellSizeQuarts = VoronoiEngine2D.getActiveCellSizeQuarts();
+        int jitterOffset = VoronoiEngine2D.getActiveJitterOffset();
+        int jitterMask = VoronoiEngine2D.getActiveJitterMask();
+
+        int cellBaseX = (gx << cellShift) + (cellSizeQuarts >> 1);
+        int cellBaseZ = (gz << cellShift) + (cellSizeQuarts >> 1);
+        int seedQX = (cellBaseX - jitterOffset) + DeterministicHash.extractJitterX(cellHash, jitterMask);
+        int seedQZ = (cellBaseZ - jitterOffset) + DeterministicHash.extractJitterZ(cellHash, jitterMask);
 
         short dominant = VoronoiEngine2D.evaluateRegionAtQuart(worldSeed, seedQX, seedQZ, mode, maxFiniteRadiusSq);
         if (dominant != targetRawId) {
@@ -216,14 +222,22 @@ public final class LocateRegionCommand {
 
     private static int getSeedQuartX(long worldSeed, int gx, int gz) {
         long cellHash = DeterministicHash.hashGridCell(worldSeed, gx, gz);
-        return (gx << VoronoiEngine2D.DEFAULT_CELL_SHIFT) + VoronoiEngine2D.DEFAULT_JITTER_OFFSET
-                + DeterministicHash.extractJitterX(cellHash, VoronoiEngine2D.DEFAULT_JITTER_MASK);
+        int cellShift = VoronoiEngine2D.getActiveCellShift();
+        int cellSizeQuarts = VoronoiEngine2D.getActiveCellSizeQuarts();
+        int jitterOffset = VoronoiEngine2D.getActiveJitterOffset();
+        int jitterMask = VoronoiEngine2D.getActiveJitterMask();
+        int cellBaseX = (gx << cellShift) + (cellSizeQuarts >> 1);
+        return (cellBaseX - jitterOffset) + DeterministicHash.extractJitterX(cellHash, jitterMask);
     }
 
     private static int getSeedQuartZ(long worldSeed, int gx, int gz) {
         long cellHash = DeterministicHash.hashGridCell(worldSeed, gx, gz);
-        return (gz << VoronoiEngine2D.DEFAULT_CELL_SHIFT) + VoronoiEngine2D.DEFAULT_JITTER_OFFSET
-                + DeterministicHash.extractJitterZ(cellHash, VoronoiEngine2D.DEFAULT_JITTER_MASK);
+        int cellShift = VoronoiEngine2D.getActiveCellShift();
+        int cellSizeQuarts = VoronoiEngine2D.getActiveCellSizeQuarts();
+        int jitterOffset = VoronoiEngine2D.getActiveJitterOffset();
+        int jitterMask = VoronoiEngine2D.getActiveJitterMask();
+        int cellBaseZ = (gz << cellShift) + (cellSizeQuarts >> 1);
+        return (cellBaseZ - jitterOffset) + DeterministicHash.extractJitterZ(cellHash, jitterMask);
     }
 
     private static int sendSuccess(

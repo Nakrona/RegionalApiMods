@@ -1,5 +1,5 @@
 ================================================================================
-REGIONALAPI CHANGELOG: VERSION 1.0.0 -> 1.0.2
+REGIONALAPI CHANGELOG: VERSION 1.0.0 -> 1.0.5
 ================================================================================
 Target: Minecraft 1.21.1 (Java 21) | Fabric, NeoForge, Forge
 
@@ -20,3 +20,28 @@ Target: Minecraft 1.21.1 (Java 21) | Fabric, NeoForge, Forge
 * ADDED: Forge networking using modern `ChannelBuilder.payloadChannel()` API.
 * ADDED: `RegionForgeGameplayListeners` handling Forge server lifecycle, player login, chunk unload, and tick events.
 * UPDATED: Root Gradle orchestration (`copyBuildJars`) to compile Fabric, NeoForge, and Forge simultaneously.
+
+--- [VERSION 1.0.3] ---
+* ADDED: Dynamic Voronoi grid cell scale in `VoronoiEngine2D` automatically computed from maximum registered region weight (`regionWeight`).
+* ADDED: Support for macro-scale non-unique repeating regions (e.g. 10,000+ to 16,000+ blocks per cell) eliminating rapid 200–512 block border swapping.
+* ADDED: Dynamic cell center (`cellBaseX`, `cellBaseZ`) and symmetrical jitter mask calculation based on active cell scale.
+* ADDED: Configuration manager `RegionalApiConfig` and automatic creation/loading of `regionalapi.json` with `voronoiCellShift` (range 7–13, or 0 for auto), `generationMode`, and `maxFiniteRadiusBlocks`.
+* ADDED: Public developer facade methods in `RegionalApi` for `getVoronoiCellShift()`, `setVoronoiCellShift(int)`, `getVoronoiCellSizeQuarts()`, `getVoronoiCellSizeBlocks()`, and `isAutoComputeCellShift()`.
+* UPDATED: `LocateRegionCommand` to adaptively search according to the dynamic Voronoi cell scale.
+* UPDATED: `IPlatformHelper` with `getConfigDirectory()` implemented with 100% parity across Fabric, NeoForge, and Forge.
+
+--- [VERSION 1.0.4] ---
+* FIXED: Resolved transient region flip/flicker where crossing a chunk boundary momentarily registered an adjacent region (Region C) before snapping back to the correct region (Region A).
+* FIXED: `CommonRegionMovementTracker.onPlayerEnterChunk` now strictly derives chunk and quadrant coordinates from the player's true current block coordinates (`player.getBlockX()`, `player.getBlockZ()`) as the single source of truth, preventing desynchronization with `EntityEvent.EnteringSection`.
+* FIXED: `RegionGameplayListeners` (NeoForge) and `RegionForgeGameplayListeners` (Forge) now synchronize chunk coordinates to the player's true position on `EnteringSection`.
+* FIXED: `ClientboundSyncRegionalSeedPacket` now properly initializes client-side `ThreadLocalRegionCache.setActiveWorldSeed()` upon receiving the packet in multiplayer.
+* FIXED: `MixinChunkSerializer.read` now validates chunk NBT against active runtime Voronoi mathematics, rejecting outdated/stale serialized region data from prior configuration scales.
+
+--- [VERSION 1.0.5] ---
+* UNIFIED: Synchronized deterministic salted regional seed across server and client (`ClientboundSyncRegionalSeedPacket.computeSaltedRegionalSeed()`), eliminating singleplayer seed mutation and multiplayer desynchronization.
+* ADDED: Lock-free atomic cache epoch invalidation (`CACHE_EPOCH`) in `ThreadLocalRegionCache`, ensuring instant cache eviction across all worker and render threads whenever world parameters, seed, or Voronoi scale change.
+* FIXED: `MixinChunkSerializer.read` now conducts comprehensive full-chunk slot validation against `ThreadLocalRegionCache` and immediately auto-heals stale NBT with fresh Voronoi data.
+* FIXED: Thread-safe read path in `RegionalApi.getRegionRawId()` for Client Render Thread queries, preventing non-thread-safe map mutation on the integrated server.
+* FIXED: F3 debug overlay in `ClientRegionTracker` now targets the exact player block position (`minecraft.player.blockPosition()`), eliminating camera-vs-feet border discrepancies.
+* FIXED: Bounded Laguerre power distance weight bias in `VoronoiEngine2D` to prevent radical axis drift outside the 3x3 neighborhood, preserving cell convexity across macro weights.
+* FIXED: `UniqueRegionQuadTree` dominance resolution, ensuring unique regions reliably override background Voronoi tessellation within their defined weight radius.

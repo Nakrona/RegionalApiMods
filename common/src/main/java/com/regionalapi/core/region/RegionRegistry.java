@@ -1,8 +1,12 @@
 package com.regionalapi.core.region;
 
 import com.regionalapi.RegionalModConstants;
+import com.regionalapi.core.cache.ThreadLocalRegionCache;
+import com.regionalapi.core.config.RegionalApiConfig;
 import com.regionalapi.core.math.DeterministicHash;
 import com.regionalapi.core.math.VoronoiEngine2D;
+import com.regionalapi.network.ClientboundSyncRegionalSeedPacket;
+import com.regionalapi.platform.IPlatformHelper;
 import it.unimi.dsi.fastutil.objects.Object2ShortOpenHashMap;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.Registries;
@@ -57,6 +61,8 @@ public final class RegionRegistry {
 
     private volatile VoronoiEngine2D.GenerationMode generationMode = VoronoiEngine2D.GenerationMode.INFINITE_TESSELLATION;
     private volatile long maxFiniteRadiusSqQuart = (2500L * 2500L); // Default 10,000 blocks (2,500 QuartPos) radius squared
+    private volatile int configuredVoronoiCellShift = 0; // 0 = auto-computed from region weight
+    private volatile boolean autoComputeCellShift = true;
 
     private RegionRegistry() {
         this.idToRawMap.defaultReturnValue((short) -1);
@@ -89,6 +95,72 @@ public final class RegionRegistry {
             throw new IllegalArgumentException("RegionDefinition cannot be null.");
         }
         this.pendingDefinitions.put(definition.id(), definition);
+        if (this.autoComputeCellShift) {
+            updateDynamicCellShift();
+        }
+    }
+
+    /**
+     * Resolves the maximum weight in blocks across all registered non-fallback regions.
+     * Prioritizes non-unique repeating regions, falling back to all regions if only unique regions exist.
+     *
+     * @return Maximum registered region weight in blocks, or 0 if none registered.
+     */
+    public int getMaxRegisteredRegionWeight() {
+        int maxNonUniqueWeight = 0;
+        int maxAnyWeight = 0;
+        for (RegionDefinition def : this.pendingDefinitions.values()) {
+            if (!FALLBACK_WILDS_LOCATION.equals(def.id())) {
+                if (def.weight() > maxAnyWeight) {
+                    maxAnyWeight = def.weight();
+                }
+                if (!def.isUnique() && def.weight() > maxNonUniqueWeight) {
+                    maxNonUniqueWeight = def.weight();
+                }
+            }
+        }
+        return (maxNonUniqueWeight > 0) ? maxNonUniqueWeight : maxAnyWeight;
+    }
+
+    /**
+     * Configures the Voronoi grid cell shift.
+     *
+     * @param shift Log2 shift in range [7, 13], or 0 to enable auto-computation from registered region weights.
+     */
+    public synchronized void setVoronoiCellShift(int shift) {
+        if (shift <= 0) {
+            this.configuredVoronoiCellShift = 0;
+            this.autoComputeCellShift = true;
+            updateDynamicCellShift();
+        } else {
+            int clamped = Math.clamp(shift, VoronoiEngine2D.MIN_CELL_SHIFT, VoronoiEngine2D.MAX_CELL_SHIFT);
+            this.configuredVoronoiCellShift = clamped;
+            this.autoComputeCellShift = false;
+            VoronoiEngine2D.setActiveCellShift(clamped);
+        }
+        ThreadLocalRegionCache.invalidateAll();
+        com.regionalapi.api.RegionalApi.getInstance().clearServerCache();
+    }
+
+    public int getConfiguredVoronoiCellShift() {
+        return this.configuredVoronoiCellShift;
+    }
+
+    public boolean isAutoComputeCellShift() {
+        return this.autoComputeCellShift;
+    }
+
+    /**
+     * Recalculates and applies the active cell shift to {@link VoronoiEngine2D}.
+     */
+    public synchronized void updateDynamicCellShift() {
+        if (this.autoComputeCellShift) {
+            int maxWeight = getMaxRegisteredRegionWeight();
+            int computedShift = VoronoiEngine2D.computeCellShiftFromWeight(maxWeight);
+            VoronoiEngine2D.setActiveCellShift(computedShift);
+        } else {
+            VoronoiEngine2D.setActiveCellShift(this.configuredVoronoiCellShift);
+        }
     }
 
     /**
@@ -101,6 +173,8 @@ public final class RegionRegistry {
         this.generationMode = mode;
         long radiusQuart = Math.max(16L, maxFiniteRadiusBlocks >> 2);
         this.maxFiniteRadiusSqQuart = radiusQuart * radiusQuart;
+        ThreadLocalRegionCache.invalidateAll();
+        com.regionalapi.api.RegionalApi.getInstance().clearServerCache();
     }
 
     public VoronoiEngine2D.GenerationMode getGenerationMode() {
@@ -118,9 +192,16 @@ public final class RegionRegistry {
      * @param server The starting {@link MinecraftServer}.
      */
     public synchronized void freezeAndIndex(MinecraftServer server) {
+        if (!RegionalApiConfig.isLoaded()) {
+            RegionalApiConfig.loadOrCreate(IPlatformHelper.getInstance().getConfigDirectory());
+        }
+        updateDynamicCellShift();
+
         Registry<Biome> biomeRegistry = server.registryAccess().registryOrThrow(Registries.BIOME);
         ServerLevel overworld = server.overworld();
-        long worldSeed = server.getWorldData().worldGenOptions().seed();
+        long rawWorldSeed = server.getWorldData().worldGenOptions().seed();
+        long regionalSeed = ClientboundSyncRegionalSeedPacket.computeSaltedRegionalSeed(rawWorldSeed);
+        ThreadLocalRegionCache.setActiveWorldSeed(regionalSeed);
         UniqueRegionSavedData savedData = (overworld != null) ? UniqueRegionSavedData.getOrCreate(overworld) : null;
 
         // Sort non-fallback regions deterministically by ResourceLocation string
@@ -195,8 +276,8 @@ public final class RegionRegistry {
                     centerQX = (int) (packedCenter >> 32);
                     centerQZ = (int) packedCenter;
                 } else {
-                    // Deterministically compute anchor coordinates from worldSeed and region ID hash
-                    long regionSeed = DeterministicHash.mixStafford13(worldSeed ^ uniqueDef.id().toString().hashCode());
+                    // Deterministically compute anchor coordinates from regionalSeed and region ID hash
+                    long regionSeed = DeterministicHash.mixStafford13(regionalSeed ^ uniqueDef.id().toString().hashCode());
                     int minRadiusQuart = uniqueDef.uniqueSearchMinRadiusBlocks() >> 2;
                     int maxRadiusQuart = uniqueDef.uniqueSearchMaxRadiusBlocks() >> 2;
                     int spanQuart = Math.max(1, maxRadiusQuart - minRadiusQuart);
@@ -214,8 +295,8 @@ public final class RegionRegistry {
                     }
                 }
 
-                int influenceRadiusQuart = Math.max(32, (uniqueDef.weight() >> 2) + VoronoiEngine2D.DEFAULT_CELL_SIZE);
-                long siteHash = DeterministicHash.hashGridCell(worldSeed, centerQX, centerQZ);
+                int influenceRadiusQuart = Math.max(16, uniqueDef.weight() >> 2);
+                long siteHash = DeterministicHash.hashGridCell(regionalSeed, centerQX, centerQZ);
                 long token = (siteHash & 0xFFFF_FFFF_FFFF_0000L) | (uniqueDef.rawId() & 0xFFFFL);
 
                 quadTree.insert(
@@ -237,8 +318,11 @@ public final class RegionRegistry {
         this.flatDefinitionsByRawId = newFlatArray;
         this.frozen = true;
 
-        LOGGER.info("RegionalAPI frozen {} region definitions ({} unique regions indexed in QuadTree).",
-                newFlatArray.length, uniqueList.size());
+        ThreadLocalRegionCache.invalidateAll();
+        com.regionalapi.api.RegionalApi.getInstance().clearServerCache();
+
+        LOGGER.info("RegionalAPI frozen {} region definitions ({} unique regions indexed in QuadTree, Voronoi cell shift={}, cell size={} quarts / {} blocks).",
+                newFlatArray.length, uniqueList.size(), VoronoiEngine2D.getActiveCellShift(), VoronoiEngine2D.getActiveCellSizeQuarts(), VoronoiEngine2D.getActiveCellSizeQuarts() << 2);
     }
 
     public boolean isFrozen() {

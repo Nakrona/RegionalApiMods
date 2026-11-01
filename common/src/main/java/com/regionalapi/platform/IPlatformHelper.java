@@ -6,6 +6,7 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.level.ServerLevelAccessor;
 
+import java.nio.file.Path;
 import java.util.ServiceLoader;
 
 /**
@@ -16,6 +17,13 @@ public interface IPlatformHelper {
     static IPlatformHelper getInstance() {
         return PlatformHelperHolder.INSTANCE;
     }
+
+    /**
+     * Resolves the filesystem path to the platform's configuration directory.
+     *
+     * @return Path pointing to the game's config directory.
+     */
+    Path getConfigDirectory();
 
     /**
      * Checks if a mod is loaded on the current platform.

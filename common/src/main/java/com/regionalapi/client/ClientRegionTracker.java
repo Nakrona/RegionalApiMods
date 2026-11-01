@@ -47,15 +47,16 @@ public final class ClientRegionTracker {
      * @return Formatted string for the F3 debug screen.
      */
     public static String getDebugRegionString(Minecraft minecraft, BlockPos cameraPos) {
-        if (minecraft != null && minecraft.hasSingleplayerServer() && minecraft.level != null && cameraPos != null) {
+        BlockPos targetPos = (minecraft != null && minecraft.player != null) ? minecraft.player.blockPosition() : cameraPos;
+        if (minecraft != null && minecraft.hasSingleplayerServer() && minecraft.level != null && targetPos != null) {
             MinecraftServer server = minecraft.getSingleplayerServer();
             if (server != null) {
                 ServerLevel serverLevel = server.getLevel(minecraft.level.dimension());
                 if (serverLevel != null) {
                     ResourceLocation localRegion = RegionalApi.getInstance().getRegionId(
                             serverLevel,
-                            cameraPos.getX(),
-                            cameraPos.getZ()
+                            targetPos.getX(),
+                            targetPos.getZ()
                     );
                     return "Region: " + localRegion;
                 }

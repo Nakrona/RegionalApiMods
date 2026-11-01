@@ -15,10 +15,17 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.network.PacketDistributor;
 
+import java.nio.file.Path;
+
 /**
  * Forge implementation of {@link IPlatformHelper}.
  */
 public final class ForgePlatformHelper implements IPlatformHelper {
+
+    @Override
+    public Path getConfigDirectory() {
+        return net.minecraftforge.fml.loading.FMLPaths.CONFIGDIR.get();
+    }
 
     @Override
     public boolean isModLoaded(String modId) {

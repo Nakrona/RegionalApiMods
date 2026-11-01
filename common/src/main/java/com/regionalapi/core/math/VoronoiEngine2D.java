@@ -12,8 +12,13 @@ import com.regionalapi.core.region.RegionRegistry;
  * <pre>
  * Power(P, Si) = (x - xi)^2 + (z - zi)^2 - wi^2
  * </pre>
+ * Voronoi cell grid scaling is dynamically adjustable or auto-computed from maximum region weight,
+ * enabling macro-scale repeating territories (e.g., 10,000+ blocks per region) without borders swapping rapidly.
  */
 public final class VoronoiEngine2D {
+
+    public static final int MIN_CELL_SHIFT = 7;
+    public static final int MAX_CELL_SHIFT = 13;
 
     /**
      * Default grid spacing shift in QuartPos units (2^7 = 128 QuartPos = 512 blocks per Voronoi cell).
@@ -25,6 +30,11 @@ public final class VoronoiEngine2D {
      */
     public static final int DEFAULT_JITTER_MASK = (DEFAULT_CELL_SIZE >> 1) - 1;
     public static final int DEFAULT_JITTER_OFFSET = DEFAULT_CELL_SIZE >> 2;
+
+    private static volatile int activeCellShift = DEFAULT_CELL_SHIFT;
+    private static volatile int activeCellSizeQuarts = DEFAULT_CELL_SIZE;
+    private static volatile int activeJitterMask = DEFAULT_JITTER_MASK;
+    private static volatile int activeJitterOffset = DEFAULT_JITTER_OFFSET;
 
     private VoronoiEngine2D() {
         throw new UnsupportedOperationException("Utility class cannot be instantiated.");
@@ -44,6 +54,66 @@ public final class VoronoiEngine2D {
          * and wraps all exterior coordinates in {@link RegionRegistry#FALLBACK_WILDS_ID}.
          */
         FINITE_CENTRALIZED
+    }
+
+    /**
+     * Returns the current active Voronoi cell shift.
+     */
+    public static int getActiveCellShift() {
+        return activeCellShift;
+    }
+
+    /**
+     * Returns the current active Voronoi cell size in QuartPos units ({@code 1 << activeCellShift}).
+     */
+    public static int getActiveCellSizeQuarts() {
+        return activeCellSizeQuarts;
+    }
+
+    /**
+     * Returns the active jitter mask ({@code (activeCellSizeQuarts >> 1) - 1}).
+     */
+    public static int getActiveJitterMask() {
+        return activeJitterMask;
+    }
+
+    /**
+     * Returns the active jitter quarter offset ({@code activeCellSizeQuarts >> 2}).
+     */
+    public static int getActiveJitterOffset() {
+        return activeJitterOffset;
+    }
+
+    /**
+     * Sets the active Voronoi grid cell shift, updating cell size, jitter mask, and jitter offset.
+     *
+     * @param shift Cell shift power-of-two (clamped between {@link #MIN_CELL_SHIFT} and {@link #MAX_CELL_SHIFT}).
+     */
+    public static void setActiveCellShift(int shift) {
+        int clamped = Math.clamp(shift, MIN_CELL_SHIFT, MAX_CELL_SHIFT);
+        if (activeCellShift != clamped) {
+            activeCellShift = clamped;
+            activeCellSizeQuarts = 1 << clamped;
+            activeJitterMask = (activeCellSizeQuarts >> 1) - 1;
+            activeJitterOffset = activeCellSizeQuarts >> 2;
+            com.regionalapi.core.cache.ThreadLocalRegionCache.invalidateAll();
+            com.regionalapi.api.RegionalApi.getInstance().clearServerCache();
+        }
+    }
+
+    /**
+     * Computes the recommended Voronoi cell shift from a target radius/weight in block units.
+     *
+     * @param targetRadiusBlocks Target region radius/weight in blocks (e.g. 10000).
+     * @return Log2 cell shift in {@code [7, 13]}.
+     */
+    public static int computeCellShiftFromWeight(int targetRadiusBlocks) {
+        if (targetRadiusBlocks <= 0) {
+            return DEFAULT_CELL_SHIFT;
+        }
+        int quartRadius = Math.max(32, targetRadiusBlocks >> 2);
+        int cellShift = 31 - Integer.numberOfLeadingZeros(quartRadius);
+        return Math.clamp(cellShift, MIN_CELL_SHIFT, MAX_CELL_SHIFT);
     }
 
     /**
@@ -73,11 +143,17 @@ public final class VoronoiEngine2D {
             return RegionRegistry.FALLBACK_WILDS_ID;
         }
 
-        int centerGridX = quartX >> DEFAULT_CELL_SHIFT;
-        int centerGridZ = quartZ >> DEFAULT_CELL_SHIFT;
+        int cellShift = activeCellShift;
+        int cellSizeQuarts = activeCellSizeQuarts;
+        int jitterMask = activeJitterMask;
+        int jitterOffset = activeJitterOffset;
+
+        int centerGridX = quartX >> cellShift;
+        int centerGridZ = quartZ >> cellShift;
 
         long minPowerDistance = Long.MAX_VALUE;
         short winningRegionId = RegionRegistry.FALLBACK_WILDS_ID;
+        long maxBiasSq = (long) (cellSizeQuarts >> 2) * (cellSizeQuarts >> 2);
 
         // Evaluate 3x3 neighborhood of Voronoi cells in 2D horizontal space
         for (int dz = -1; dz <= 1; dz++) {
@@ -93,14 +169,15 @@ public final class VoronoiEngine2D {
                     continue;
                 }
 
-                int seedQuartX = (gx << DEFAULT_CELL_SHIFT) + DEFAULT_JITTER_OFFSET
-                        + DeterministicHash.extractJitterX(cellHash, DEFAULT_JITTER_MASK);
-                int seedQuartZ = (gz << DEFAULT_CELL_SHIFT) + DEFAULT_JITTER_OFFSET
-                        + DeterministicHash.extractJitterZ(cellHash, DEFAULT_JITTER_MASK);
+                int cellBaseX = (gx << cellShift) + (cellSizeQuarts >> 1);
+                int cellBaseZ = (gz << cellShift) + (cellSizeQuarts >> 1);
+                int seedQuartX = (cellBaseX - jitterOffset) + DeterministicHash.extractJitterX(cellHash, jitterMask);
+                int seedQuartZ = (cellBaseZ - jitterOffset) + DeterministicHash.extractJitterZ(cellHash, jitterMask);
 
                 long deltaX = (long) quartX - seedQuartX;
                 long deltaZ = (long) quartZ - seedQuartZ;
-                long powerDist = (deltaX * deltaX) + (deltaZ * deltaZ) - definition.weightSquaredQuart();
+                long effectiveWeightSq = Math.min(definition.weightSquaredQuart(), maxBiasSq);
+                long powerDist = (deltaX * deltaX) + (deltaZ * deltaZ) - effectiveWeightSq;
 
                 if (powerDist < minPowerDistance) {
                     minPowerDistance = powerDist;
@@ -237,12 +314,18 @@ public final class VoronoiEngine2D {
             return RegionRegistry.FALLBACK_WILDS_ID & 0xFFFFL;
         }
 
-        int centerGridX = quartX >> DEFAULT_CELL_SHIFT;
-        int centerGridZ = quartZ >> DEFAULT_CELL_SHIFT;
+        int cellShift = activeCellShift;
+        int cellSizeQuarts = activeCellSizeQuarts;
+        int jitterMask = activeJitterMask;
+        int jitterOffset = activeJitterOffset;
+
+        int centerGridX = quartX >> cellShift;
+        int centerGridZ = quartZ >> cellShift;
 
         long minPowerDistance = Long.MAX_VALUE;
         short winningRegionId = RegionRegistry.FALLBACK_WILDS_ID;
         long winningSiteHash = 0L;
+        long maxBiasSq = (long) (cellSizeQuarts >> 2) * (cellSizeQuarts >> 2);
 
         for (int dz = -1; dz <= 1; dz++) {
             int gx = centerGridX - 1;
@@ -256,14 +339,15 @@ public final class VoronoiEngine2D {
                     continue;
                 }
 
-                int seedQuartX = (gx << DEFAULT_CELL_SHIFT) + DEFAULT_JITTER_OFFSET
-                        + DeterministicHash.extractJitterX(cellHash, DEFAULT_JITTER_MASK);
-                int seedQuartZ = (gz << DEFAULT_CELL_SHIFT) + DEFAULT_JITTER_OFFSET
-                        + DeterministicHash.extractJitterZ(cellHash, DEFAULT_JITTER_MASK);
+                int cellBaseX = (gx << cellShift) + (cellSizeQuarts >> 1);
+                int cellBaseZ = (gz << cellShift) + (cellSizeQuarts >> 1);
+                int seedQuartX = (cellBaseX - jitterOffset) + DeterministicHash.extractJitterX(cellHash, jitterMask);
+                int seedQuartZ = (cellBaseZ - jitterOffset) + DeterministicHash.extractJitterZ(cellHash, jitterMask);
 
                 long deltaX = (long) quartX - seedQuartX;
                 long deltaZ = (long) quartZ - seedQuartZ;
-                long powerDist = (deltaX * deltaX) + (deltaZ * deltaZ) - definition.weightSquaredQuart();
+                long effectiveWeightSq = Math.min(definition.weightSquaredQuart(), maxBiasSq);
+                long powerDist = (deltaX * deltaX) + (deltaZ * deltaZ) - effectiveWeightSq;
 
                 if (powerDist < minPowerDistance) {
                     minPowerDistance = powerDist;

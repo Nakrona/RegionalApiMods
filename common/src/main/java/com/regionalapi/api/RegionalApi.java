@@ -62,6 +62,50 @@ public final class RegionalApi {
     }
 
     /**
+     * Returns the active Voronoi grid cell shift (between 7 and 13).
+     */
+    public int getVoronoiCellShift() {
+        return VoronoiEngine2D.getActiveCellShift();
+    }
+
+    /**
+     * Returns the active Voronoi grid cell size in QuartPos units ({@code 1 << cellShift}).
+     */
+    public int getVoronoiCellSizeQuarts() {
+        return VoronoiEngine2D.getActiveCellSizeQuarts();
+    }
+
+    /**
+     * Returns the active Voronoi grid cell size in block units ({@code (1 << cellShift) * 4}).
+     */
+    public int getVoronoiCellSizeBlocks() {
+        return VoronoiEngine2D.getActiveCellSizeQuarts() << 2;
+    }
+
+    /**
+     * Sets an explicit Voronoi cell shift (range 7–13) or 0 to enable auto-computation from registered region weights.
+     *
+     * @param shift Cell shift power-of-two (7–13), or 0 for auto.
+     */
+    public void setVoronoiCellShift(int shift) {
+        RegionRegistry.getInstance().setVoronoiCellShift(shift);
+    }
+
+    /**
+     * Checks if Voronoi cell shift is auto-computed based on maximum registered region weight.
+     */
+    public boolean isAutoComputeCellShift() {
+        return RegionRegistry.getInstance().isAutoComputeCellShift();
+    }
+
+    /**
+     * Resolves the maximum weight in blocks across all registered non-fallback regions.
+     */
+    public int getMaxRegisteredRegionWeight() {
+        return RegionRegistry.getInstance().getMaxRegisteredRegionWeight();
+    }
+
+    /**
      * Resolves the raw primitive {@code short} region ID at the specified block coordinates in sub-microsecond time.
      * <p>
      * Never allocates objects. Uses the server-level fastutil primitive cache, loaded chunk attachment,
@@ -97,6 +141,13 @@ public final class RegionalApi {
                     this.serverHomogeneousChunkCache.put(chunkKey, (short) -1);
                     return data.regional$getRegionAtQuart(qx, qz);
                 }
+            }
+        } else {
+            ChunkAccess loadedChunk = level.getChunkSource().getChunkNow(chunkX, chunkZ);
+            if (loadedChunk instanceof IRegionChunkData data && data.regional$isInitialized()) {
+                return data.regional$isHomogeneous()
+                        ? data.regional$getSingleRegionId()
+                        : data.regional$getRegionAtQuart(qx, qz);
             }
         }
 
