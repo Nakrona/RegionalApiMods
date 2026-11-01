@@ -1,0 +1,218 @@
+================================================================================
+REGIONALAPI UPDATE LOG: VERSION 1.0.2 -> 1.0.6
+================================================================================
+Project Name       : RegionalAPI (regionalapi)
+Target Minecraft   : 1.21.1 (Java 21)
+Supported Loaders  : Fabric, NeoForge, Minecraft Forge
+Architecture Style : Single-Repository Multi-Loader (:common, :neoforge, :fabric, :forge)
+Mappings           : Official Mojang Mappings (Mojmap)
+External Wrappers  : 0 (No Architectury API)
+Generated Date     : 2026-11-01
+
+--------------------------------------------------------------------------------
+1. EXECUTIVE ARCHITECTURAL SUMMARY
+--------------------------------------------------------------------------------
+Between versions 1.0.2 and 1.0.6, RegionalAPI underwent extensive mathematical,
+networking, spatial-caching, and architectural hardening to support macro-scale
+procedural territories (e.g., Pokémon regions spanning 10,000+ to 16,000+ blocks),
+eliminate border-flickering, establish bulletproof seed synchronization between
+client and server, and prevent external mod clobbering:
+
+- Version 1.0.3: Dynamic Voronoi Grid Scaling & Configuration Engine
+  Introduced dynamic log2 Voronoi cell shifting (7–13) auto-computed from region
+  weights, dynamic cell centers, symmetrical jitter masks, and `regionalapi.json`.
+- Version 1.0.4: Chunk Section Coordinate Synchronization & Stale NBT Validation
+  Synchronized player chunk evaluations strictly to true block coordinates, eliminating
+  transient section-crossing glitches and validating chunk NBT against active math.
+- Version 1.0.5: Unified Deterministic Regional Seed & Atomic Cache Epoch Invalidation
+  Synchronized 64-bit salted regional seed across client and server, implemented
+  lock-free `CACHE_EPOCH` invalidation in `ThreadLocalRegionCache`, bounded Laguerre
+  power distance bias, and fixed QuadTree dominance.
+- Version 1.0.6: Authoritative Seed Locking & Anti-Clobbering Protection
+  Diagnosed and permanently resolved dual-layer region desynchronization caused by
+  external structure generation passing raw seeds. Implemented authoritative seed
+  locking, anti-clobbering detection, lifecycle resets, and graceful F3 fallbacks.
+
+--------------------------------------------------------------------------------
+2. VERSION 1.0.3 UPDATE DETAILS (MACRO VORONOI SCALING & CONFIG)
+--------------------------------------------------------------------------------
+
+A. Dynamic Voronoi Grid Cell Scale (`VoronoiEngine2D.java`)
+   - Replaced legacy hardcoded grid bit-shift (`quartX >> 7`, 512 blocks) with a
+     dynamic cell shift computed from the maximum registered region weight (`regionWeight`).
+   - Formula:
+     * `quartRadius = Math.max(32, targetRadiusBlocks >> 2);`
+     * `cellShift = 31 - Integer.numberOfLeadingZeros(quartRadius);` (clamped in [7, 13]).
+   - Scale Mapping:
+     * Shift 7  : 128 quarts  = 512 blocks per cell
+     * Shift 10 : 1,024 quarts = 4,096 blocks per cell
+     * Shift 11 : 2,048 quarts = 8,192 blocks per cell
+     * Shift 12 : 4,096 quarts = 16,384 blocks per cell
+   - Dynamic Cell Centers & Jitter Bounds:
+     * `cellBaseX = (gx << cellShift) + (cellSizeQuarts >> 1);`
+     * `cellBaseZ = (gz << cellShift) + (cellSizeQuarts >> 1);`
+     * `jitterMask = (cellSizeQuarts >> 1) - 1;`
+     * `jitterOffset = cellSizeQuarts >> 2;`
+   - Result: Non-unique repeating regions (`isUnique = false`) now span macro
+     territories (10,000+ blocks) without rapid 200–512 block border oscillations.
+
+B. Configuration Subsystem (`RegionalApiConfig.java` & `regionalapi.json`)
+   - Added automatic configuration creation and parsing in `config/regionalapi.json`.
+   - Exposed Options:
+     * `voronoiCellShift`: integer (7–13, or 0 for automatic computation from weights).
+     * `generationMode`: `"INFINITE_TESSELLATION"` (default) or `"FINITE_CENTRALIZED"`.
+     * `maxFiniteRadiusBlocks`: radius in blocks around (0, 0) for finite boundaries.
+   - Java SPI `IPlatformHelper.getConfigDirectory()` implemented with 100% parity
+     across Fabric (`FabricLoader.getInstance().getConfigDir()`), NeoForge
+     (`FMLPaths.CONFIGDIR.get()`), and Forge (`FMLPaths.CONFIGDIR.get()`).
+
+C. Public Developer Facade & Command Adaptability
+   - Added methods to `RegionalApi.java`:
+     * `getVoronoiCellShift()`, `setVoronoiCellShift(int)`
+     * `getVoronoiCellSizeQuarts()`, `getVoronoiCellSizeBlocks()`
+     * `isAutoComputeCellShift()`, `getMaxRegisteredRegionWeight()`
+   - Updated Brigadier `/locate region <region_id>` command to adapt search radius
+     and concentric ring steps dynamically based on active Voronoi cell scale.
+
+--------------------------------------------------------------------------------
+3. VERSION 1.0.4 UPDATE DETAILS (ZERO-FLICKER COORDINATE PARITY)
+--------------------------------------------------------------------------------
+
+A. True Player Block Coordinate Single Source of Truth
+   - Location: `common/src/main/java/com/regionalapi/platform/CommonRegionMovementTracker.java`
+   - Problem: `EntityEvent.EnteringSection` in NeoForge/Forge passes chunk section
+     coordinates which occasionally desynchronized from the player's true fractional
+     floating-point coordinates on diagonal chunk crossings or riding entities.
+   - Fix: `CommonRegionMovementTracker.onPlayerEnterChunk` now strictly derives:
+     * `actualChunkX = player.getBlockX() >> 4;`
+     * `actualChunkZ = player.getBlockZ() >> 4;`
+     * `qx = player.getBlockX() >> 2;`
+     * `qz = player.getBlockZ() >> 2;`
+     guaranteeing 100% mathematical consistency with spatial boundaries.
+
+B. Client-Side Seed Receiver Initialization
+   - Added client-side setter `ThreadLocalRegionCache.setActiveWorldSeed(seed)` upon
+     receiving `ClientboundSyncRegionalSeedPacket` on client network listeners.
+
+C. Stale NBT Deserialization Validation (`MixinChunkSerializer.java`)
+   - Added runtime validation in `MixinChunkSerializer.read` against active Voronoi
+     parameters to reject outdated region data saved under older configuration scales.
+
+--------------------------------------------------------------------------------
+4. VERSION 1.0.5 UPDATE DETAILS (UNIFIED SEED & ATOMIC CACHE EPOCH)
+--------------------------------------------------------------------------------
+
+A. Deterministic Salted Regional Seed Unification
+   - Root Cause: In Singleplayer (Integrated Server), `RegionRegistry.freezeAndIndex`
+     initialized `activeWorldSeed` with `rawWorldSeed`, while client network handler
+     overwrote it mid-session with `saltedSeed = computeSaltedRegionalSeed(rawWorldSeed)`.
+     In multiplayer, the server evaluated with `rawWorldSeed` while the client evaluated
+     with `saltedSeed`, producing divergent maps.
+   - Fix: Unified both server and client to authoritatively use
+     `ClientboundSyncRegionalSeedPacket.computeSaltedRegionalSeed(rawWorldSeed)`.
+     All Voronoi cell hashes, QuadTree tokens, and cache entries now share identical seeds.
+
+B. Lock-Free Atomic Cache Epoch Invalidation (`ThreadLocalRegionCache.java`)
+   - Added volatile generation counter:
+     * `private static final AtomicLong CACHE_EPOCH = new AtomicLong(1L);`
+     * `private long cachedEpochSnapshot = 0L;`
+   - Added `ThreadLocalRegionCache.invalidateAll()`.
+   - In `ThreadLocalRegionCache.get()`, atomically invalidates the thread's 32-slot
+     ring buffer (`Arrays.fill(keys, Long.MIN_VALUE)`) whenever either
+     `cachedSeedSnapshot != activeWorldSeed` or `cachedEpochSnapshot != currentEpoch`.
+     Guarantees instantaneous zero-allocation cache eviction across worker and render threads.
+
+C. Comprehensive Full-Chunk Slot NBT Validation (`MixinChunkSerializer.java`)
+   - Replaced single-corner check with full 16-slot grid comparison against
+     `ThreadLocalRegionCache.get().ensureChunkSlot(cx, cz)`.
+   - Auto-heals in-memory chunk attachments immediately if NBT differs from active math.
+
+D. Thread-Safe Render Thread Access (`RegionalApi.getRegionRawId()`)
+   - Guarded off-thread chunk queries from `ServerChunkCache` on the Client Render Thread,
+     preventing concurrent map corruption on `serverHomogeneousChunkCache`.
+
+E. Bounded Laguerre Power Distance Weight Bias (`VoronoiEngine2D.java`)
+   - Bounded effective weight offset by `maxBiasSq = (cellSizeQuarts >> 2)^2`, preventing
+     macro weights from shifting cell boundaries outside the 3x3 neighbor window and
+     preserving convexity for chunk homogeneity checks.
+
+F. Precise F3 Targeting (`ClientRegionTracker.java`)
+   - F3 debug string now queries `minecraft.player.blockPosition()`, eliminating
+     pitch/eye-level camera offset discrepancies.
+
+--------------------------------------------------------------------------------
+5. VERSION 1.0.6 UPDATE DETAILS (AUTHORITATIVE SEED LOCKING & BUG RESOLUTION)
+--------------------------------------------------------------------------------
+
+A. Identification of Dual-Layer Desynchronization (Galar vs. Johto)
+   - Visual Evidence: At coordinate XYZ: -452.611 / 82.17559 / -204.681 (Chunk [-29, -13]),
+     entering the chunk displayed "Entering Territory Johto" on the HUD banner while
+     F3 debug momentarily read "Region: cobblemonregional:galar", snapping to Johto
+     after standing still.
+   - Mathematical Analysis on Seed -4465292637720714527L:
+     * Evaluated with Raw World Seed    (-4465292637720714527L) --> GALAR (id: 2)
+     * Evaluated with Salted Regional Seed (4857623081090933676L) --> JOHTO (id: 5) [CORRECT]
+   - Culprit Discovered: External mod `CobblemonRegional` (`CobblemonRegionalStructureFilter.java:60`)
+     invoked `ThreadLocalRegionCache.setActiveWorldSeed(context.seed())` on structure checks.
+     `context.seed()` in vanilla Minecraft is the raw unsalted world seed. Every time
+     a structure generated in new chunks, `activeWorldSeed` was corrupted to raw seed
+     (Galar) until Xaero's minimap periodic check restored the salted seed (Johto).
+
+B. Authoritative Seed Locking Subsystem (`ThreadLocalRegionCache.java`)
+   - Added `private static volatile boolean seedLocked = false;`.
+   - Added `setAuthoritativeRegionalSeed(long regionalSeed)`:
+     * Sets `activeWorldSeed = regionalSeed;`
+     * Sets `seedLocked = true;`
+     * Increments `CACHE_EPOCH.incrementAndGet();`
+   - Anti-Clobbering Protection in `setActiveWorldSeed(long worldSeed)`:
+     * When `seedLocked == true`: checks whether
+       `computeSaltedRegionalSeed(worldSeed) == activeWorldSeed`.
+     * If true, detects that the caller is passing the raw unsalted world seed while
+       the salted seed is active, and silently drops the clobber attempt.
+     * Prevents any external mod or third-party hook from corrupting spatial parity.
+   - Added `resetSeed()` and `isSeedLocked()`.
+
+C. Complete Tri-Loader Lifecycle Parity
+   - Fabric (`RegionalFabricMod.java`): Calls `setAuthoritativeRegionalSeed` on
+     `SERVER_STARTING`, calls `resetSeed` on `SERVER_STOPPED`.
+   - NeoForge (`RegionGameplayListeners.java`): Calls `setAuthoritativeRegionalSeed` on
+     `ServerAboutToStartEvent`, calls `resetSeed` on `ServerStoppedEvent`.
+   - Forge (`RegionForgeGameplayListeners.java`): Calls `setAuthoritativeRegionalSeed` on
+     `ServerAboutToStartEvent`, calls `resetSeed` on `ServerStoppedEvent`.
+
+D. Graceful Debug Overlay Fallback (`ClientRegionTracker.java`)
+   - `getDebugRegionString` now safely defers to `currentRegionId` (authoritatively
+     synced from server) if local real-time evaluation evaluates to fallback Wilds.
+
+E. Cobblemon Regional Alignment
+   - Removed the clobbering call `ThreadLocalRegionCache.setActiveWorldSeed(context.seed())`
+     from `CobblemonRegionalStructureFilter.java`.
+   - Released and built `cobblemonregional-fabric-1.0.8.jar`.
+
+--------------------------------------------------------------------------------
+6. FILE MODIFICATION MATRIX (VERSIONS 1.0.2 -> 1.0.6)
+--------------------------------------------------------------------------------
+Modifications strictly maintain 100% English code, Zero-GC hot paths, and multi-loader parity:
+
+Module   | File Path                                          | Status
+---------+----------------------------------------------------+--------------------------
+:common  | core/math/VoronoiEngine2D.java                     | Dynamic shift & bounded bias
+:common  | core/cache/ThreadLocalRegionCache.java             | Epoch & Authoritative seed lock
+:common  | core/region/RegionRegistry.java                    | Salted seed freeze & dynamic shift
+:common  | core/config/RegionalApiConfig.java                 | Configuration manager added
+:common  | network/ClientboundSyncRegionalSeedPacket.java     | Authoritative seed binding
+:common  | platform/CommonRegionMovementTracker.java          | Absolute block coordinate sync
+:common  | client/ClientRegionTracker.java                    | Precise F3 & graceful fallback
+:common  | mixin/MixinChunkSerializer.java                    | Full-slot NBT validation
+:common  | api/RegionalApi.java                               | Dynamic scale developer facades
+:common  | command/LocateRegionCommand.java                   | Dynamic Voronoi search adaptation
+:fabric  | fabric/RegionalFabricMod.java                      | Authoritative seed lifecycle hooks
+:neoforge| neoforge/RegionGameplayListeners.java              | Authoritative seed lifecycle hooks
+:forge   | forge/RegionForgeGameplayListeners.java            | Authoritative seed lifecycle hooks
+root     | gradle.properties                                  | Incremented mod_version = 1.0.6
+root     | Logupdate/changelog.txt                            | Cumulative change summaries
+root     | Logupdate/LOG_UPDATE_1.0.2_TO_1.0.6.txt            | In-depth technical documentation
+
+================================================================================
+END OF UPDATE LOG
+================================================================================
