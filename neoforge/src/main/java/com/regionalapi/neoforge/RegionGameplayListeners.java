@@ -13,6 +13,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.level.ChunkEvent;
+import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 
@@ -24,15 +25,21 @@ public final class RegionGameplayListeners {
     private static volatile long activeSaltedRegionalSeed = 0L;
 
     @SubscribeEvent
-    public void onServerStarting(ServerStartingEvent event) {
+    public void onServerAboutToStart(ServerAboutToStartEvent event) {
         MinecraftServer server = event.getServer();
         long rawWorldSeed = server.getWorldData().worldGenOptions().seed();
         activeSaltedRegionalSeed = ClientboundSyncRegionalSeedPacket.computeSaltedRegionalSeed(rawWorldSeed);
 
-        // Use the salted regional seed as the deterministic spatial seed so client minimaps and server match
+        // Freeze registry and lock authoritative seed BEFORE loadLevel() and prepareLevels() generate/load spawn chunks
         ThreadLocalRegionCache.setAuthoritativeRegionalSeed(activeSaltedRegionalSeed);
         RegionalApi.getInstance().clearServerCache();
         RegionRegistry.getInstance().freezeAndIndex(server);
+    }
+
+    @SubscribeEvent
+    public void onServerStarting(ServerStartingEvent event) {
+        // Persist and reconcile UniqueRegionSavedData once Overworld DimensionDataStorage is initialized
+        RegionRegistry.getInstance().syncUniqueRegionsWithOverworld(event.getServer());
     }
 
     @SubscribeEvent

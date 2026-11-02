@@ -1,0 +1,46 @@
+================================================================================
+REGIONALAPI UPDATE LOG: VERSION 1.0.7 -> 1.0.8
+================================================================================
+Project Name       : RegionalAPI (regionalapi)
+Target Minecraft   : 1.21.1 (Java 21)
+Supported Loaders  : Fabric, NeoForge, Minecraft Forge
+Architecture Style : Single-Repository Multi-Loader (:common, :neoforge, :fabric, :forge)
+Mappings           : Official Mojang Mappings (Mojmap)
+External Wrappers  : 0 (No Architectury API)
+Generated Date     : 2026-11-02
+
+--------------------------------------------------------------------------------
+1. EXECUTIVE ARCHITECTURAL SUMMARY
+--------------------------------------------------------------------------------
+Version 1.0.8 resolves the server startup lifecycle and spawn-chunk caching race
+condition on NeoForge and Forge:
+
+1. Two-Phase Server Startup Lifecycle (Pre-World-Load Freeze + Post-Level-Create SavedData Sync):
+   On NeoForge and Forge, `ServerStartingEvent` is posted AFTER `MinecraftServer#loadLevel()`
+   and `prepareLevels()` have already generated and loaded all spawn chunks. In v1.0.7,
+   binding `freezeAndIndex` to `ServerStartingEvent` meant that during initial spawn chunk
+   generation/loading, `RegionRegistry.isFrozen()` was `false` and `activeWorldSeed` was `0L`,
+   causing `VoronoiEngine2D` to fall back to `0` (`regionalapi:wilds`) and `BiomeMaskEvaluationHelper`
+   to skip 3D biome overrides on spawn chunks.
+   Resolved across all three loaders (`:neoforge`, `:fabric`, `:forge`) using a two-phase lifecycle:
+   - Phase 1 (Before `loadLevel()`): `ServerAboutToStartEvent` (NeoForge/Forge) and
+     `ServerLifecycleEvents.SERVER_STARTING` (Fabric) compute and lock the authoritative salted
+     regional seed and execute `RegionRegistry.getInstance().freezeAndIndex(server)` BEFORE
+     any world or spawn chunk is created or loaded.
+   - Phase 2 (After `loadLevel()`): `ServerStartingEvent` (NeoForge/Forge) and
+     `ServerLifecycleEvents.SERVER_STARTED` (Fabric) execute
+     `RegionRegistry.getInstance().syncUniqueRegionsWithOverworld(server)` once
+     `server.overworld()` and its `DimensionDataStorage` are initialized.
+
+2. Epoch-Validated Chunk Duck Interface (`MixinChunkAccess` / `IRegionChunkData`):
+   Added `@Unique private long regional$populatedEpoch` to `MixinChunkAccess` verified against
+   `ThreadLocalRegionCache.getCurrentEpoch()` inside `regional$isInitialized()`.
+   - Any chunk queried prior to `RegionRegistry.isFrozen()` or with an unset seed is never
+     locked as initialized in `MixinChunkAccess`, `ChunkRegionAttachment`, `MixinChunkSerializer`,
+     or `ThreadLocalRegionCache`.
+   - Whenever `CACHE_EPOCH` increments (such as on `freezeAndIndex`, `setVoronoiCellShift`,
+     `configureGenerationMode`, or `syncUniqueRegionsWithOverworld`), all in-memory chunks
+     automatically invalidate their cached `IRegionChunkData` in O(1) time without iterating chunks,
+     and existing worlds whose spawn chunks were previously saved as `regionalapi:wilds` in v1.0.7
+     are automatically healed on chunk read.
+================================================================================

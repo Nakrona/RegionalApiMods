@@ -50,9 +50,15 @@ public final class RegionalFabricMod implements ModInitializer {
             long rawWorldSeed = server.getWorldData().worldGenOptions().seed();
             activeSaltedRegionalSeed = ClientboundSyncRegionalSeedPacket.computeSaltedRegionalSeed(rawWorldSeed);
 
+            // Freeze registry and lock authoritative seed BEFORE loadLevel() and prepareLevels() generate/load spawn chunks
             ThreadLocalRegionCache.setAuthoritativeRegionalSeed(activeSaltedRegionalSeed);
             RegionalApi.getInstance().clearServerCache();
             RegionRegistry.getInstance().freezeAndIndex(server);
+        });
+
+        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            // Persist and reconcile UniqueRegionSavedData once Overworld DimensionDataStorage is initialized
+            RegionRegistry.getInstance().syncUniqueRegionsWithOverworld(server);
         });
 
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
@@ -60,7 +66,7 @@ public final class RegionalFabricMod implements ModInitializer {
             ThreadLocalRegionCache.resetSeed();
         });
 
-        // 3. Player login listener
+        // 4. Player login listener
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             ServerPlayer player = handler.getPlayer();
             IPlatformHelper.getInstance().sendSyncSeedPacket(player, activeSaltedRegionalSeed);
@@ -71,7 +77,7 @@ public final class RegionalFabricMod implements ModInitializer {
             );
         });
 
-        // 4. Chunk unload cache eviction
+        // 5. Chunk unload cache eviction
         ServerChunkEvents.CHUNK_UNLOAD.register((world, chunk) -> {
             RegionalApi.getInstance().evictChunkFromServerCache(chunk.getPos().toLong());
         });

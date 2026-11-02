@@ -28,6 +28,9 @@ public final class ChunkRegionAttachment {
             if (data.regional$isInitialized()) {
                 return data;
             }
+            if (!RegionRegistry.getInstance().isFrozen() || ThreadLocalRegionCache.getActiveWorldSeed() == 0L) {
+                return FallbackRegionChunkData.INSTANCE;
+            }
 
             ThreadLocalRegionCache cache = ThreadLocalRegionCache.get();
             int slot = cache.ensureChunkSlot(chunk.getPos().x, chunk.getPos().z);

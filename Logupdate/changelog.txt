@@ -61,3 +61,8 @@ Target: Minecraft 1.21.1 (Java 21) | Fabric, NeoForge, Forge
 * SYNCHRONIZED: Full 1:1 multi-loader parity between Fabric, NeoForge, and Forge event handling by delegating player chunk transitions and tick polling exclusively to `MixinServerPlayer` and `PlayerLoggedInEvent`.
 
 
+--- [VERSION 1.0.8] ---
+* FIXED (CRITICAL): Resolved NeoForge and Forge spawn-chunk region fallback race condition where `ServerStartingEvent` fired after `loadLevel()` and `prepareLevels()`, causing initial spawn chunks to evaluate while `RegionRegistry.isFrozen()` was `false` and get stamped as `regionalapi:wilds` (`0`).
+* ADDED: Two-phase server lifecycle across all loaders (`:neoforge`, `:fabric`, `:forge`): Phase 1 (`ServerAboutToStartEvent` on NeoForge/Forge, `ServerLifecycleEvents.SERVER_STARTING` on Fabric) freezes `RegionRegistry` and locks the authoritative salted regional seed BEFORE `loadLevel()`; Phase 2 (`ServerStartingEvent` on NeoForge/Forge, `ServerLifecycleEvents.SERVER_STARTED` on Fabric) synchronizes and persists `UniqueRegionSavedData` once `server.overworld()` is initialized.
+* ADDED: O(1) epoch validation (`regional$populatedEpoch` vs `ThreadLocalRegionCache.getCurrentEpoch()`) in `MixinChunkAccess` (`IRegionChunkData`) and pre-freeze guards in `ChunkRegionAttachment`, `MixinChunkSerializer`, and `ThreadLocalRegionCache`, guaranteeing uninitialized/pre-freeze evaluations can never poison chunk memory or ring buffers and any epoch increment atomically invalidates stale in-memory chunk attachments.
+

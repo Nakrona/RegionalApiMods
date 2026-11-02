@@ -1,6 +1,7 @@
 package com.regionalapi.mixin;
 
 import com.regionalapi.core.cache.IRegionChunkData;
+import com.regionalapi.core.cache.ThreadLocalRegionCache;
 import com.regionalapi.core.region.RegionRegistry;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import org.spongepowered.asm.mixin.Mixin;
@@ -18,6 +19,9 @@ public abstract class MixinChunkAccess implements IRegionChunkData {
     private boolean regional$initialized = false;
 
     @Unique
+    private long regional$populatedEpoch = 0L;
+
+    @Unique
     private boolean regional$homogeneous = true;
 
     @Unique
@@ -28,7 +32,9 @@ public abstract class MixinChunkAccess implements IRegionChunkData {
 
     @Override
     public boolean regional$isInitialized() {
-        return this.regional$initialized;
+        return this.regional$initialized
+                && RegionRegistry.getInstance().isFrozen()
+                && this.regional$populatedEpoch == ThreadLocalRegionCache.getCurrentEpoch();
     }
 
     @Override
@@ -57,7 +63,9 @@ public abstract class MixinChunkAccess implements IRegionChunkData {
 
     @Override
     public void regional$setHomogeneous(short regionId) {
-        this.regional$initialized = true;
+        boolean ready = RegionRegistry.getInstance().isFrozen() && ThreadLocalRegionCache.getActiveWorldSeed() != 0L;
+        this.regional$initialized = ready;
+        this.regional$populatedEpoch = ready ? ThreadLocalRegionCache.getCurrentEpoch() : 0L;
         this.regional$homogeneous = true;
         this.regional$singleRegionId = regionId;
         this.regional$borderQuartGrid = null;
@@ -65,7 +73,9 @@ public abstract class MixinChunkAccess implements IRegionChunkData {
 
     @Override
     public void regional$setBorder(short[] quartGrid16) {
-        this.regional$initialized = true;
+        boolean ready = RegionRegistry.getInstance().isFrozen() && ThreadLocalRegionCache.getActiveWorldSeed() != 0L;
+        this.regional$initialized = ready;
+        this.regional$populatedEpoch = ready ? ThreadLocalRegionCache.getCurrentEpoch() : 0L;
         this.regional$homogeneous = false;
         if (this.regional$borderQuartGrid == null || this.regional$borderQuartGrid.length != 16) {
             this.regional$borderQuartGrid = Arrays.copyOf(quartGrid16, 16);

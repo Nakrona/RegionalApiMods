@@ -50,6 +50,13 @@ public final class ThreadLocalRegionCache {
     }
 
     /**
+     * Returns the current global cache invalidation epoch.
+     */
+    public static long getCurrentEpoch() {
+        return CACHE_EPOCH.get();
+    }
+
+    /**
      * Authoritatively sets and locks the 64-bit salted regional seed upon server startup or
      * receipt of the clientbound sync seed packet.
      *
@@ -196,6 +203,6 @@ public final class ThreadLocalRegionCache {
                 gridBuffer
         );
         this.homogeneousFlags[slot] = homogeneous;
-        this.keys[slot] = chunkKey;
+        this.keys[slot] = (registry.isFrozen() && activeWorldSeed != 0L) ? chunkKey : Long.MIN_VALUE;
     }
 }

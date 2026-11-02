@@ -30,8 +30,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * Central deterministic registry mapping {@link ResourceLocation} region identifiers to compact
  * primitive {@code short} IDs ({@code 0, 1, 2...}) and flat lookup arrays.
  * <p>
- * During {@code ServerAboutToStartEvent}, all registered {@link RegionDefinition} instances are
- * sorted deterministically, assigned sequential primitive {@code short} IDs, bound to direct
+ * Before world generation and spawn chunk loading ({@code ServerAboutToStartEvent} on NeoForge/Forge,
+ * {@code ServerLifecycleEvents.SERVER_STARTING} on Fabric), all registered {@link RegionDefinition}
+ * instances are sorted deterministically, assigned sequential primitive {@code short} IDs, bound to direct
  * {@code Holder<Biome>} references, and indexed into a flat ticket table and a 2D QuadTree for
  * {@code isUnique == true} regions.
  */
@@ -186,7 +187,8 @@ public final class RegionRegistry {
     }
 
     /**
-     * Freezes the registry on {@code ServerAboutToStartEvent}, resolving all {@code Holder<Biome>}
+     * Freezes the registry prior to world and spawn chunk loading ({@code ServerAboutToStartEvent} on NeoForge/Forge,
+     * {@code ServerLifecycleEvents.SERVER_STARTING} on Fabric), resolving all {@code Holder<Biome>}
      * references directly and building flat O(1) lookup arrays and the unique region QuadTree.
      *
      * @param server The starting {@link MinecraftServer}.
@@ -265,50 +267,7 @@ public final class RegionRegistry {
 
         // Pre-compute and index isUnique == true regions into the 2D QuadTree
         if (!uniqueList.isEmpty()) {
-            UniqueRegionQuadTree quadTree = new UniqueRegionQuadTree(-1_000_000, -1_000_000, 1_000_000, 1_000_000);
-            for (int i = 0; i < uniqueList.size(); i++) {
-                RegionDefinition uniqueDef = uniqueList.get(i);
-                long packedCenter = (savedData != null) ? savedData.getPackedQuartCenter(uniqueDef.id()) : Long.MIN_VALUE;
-                int centerQX;
-                int centerQZ;
-
-                if (packedCenter != Long.MIN_VALUE) {
-                    centerQX = (int) (packedCenter >> 32);
-                    centerQZ = (int) packedCenter;
-                } else {
-                    // Deterministically compute anchor coordinates from regionalSeed and region ID hash
-                    long regionSeed = DeterministicHash.mixStafford13(regionalSeed ^ uniqueDef.id().toString().hashCode());
-                    int minRadiusQuart = uniqueDef.uniqueSearchMinRadiusBlocks() >> 2;
-                    int maxRadiusQuart = uniqueDef.uniqueSearchMaxRadiusBlocks() >> 2;
-                    int spanQuart = Math.max(1, maxRadiusQuart - minRadiusQuart);
-
-                    int distanceQuart = minRadiusQuart + (int) (Long.remainderUnsigned(
-                            DeterministicHash.mixStafford13(regionSeed + 0x9E3779B97F4A7C15L), spanQuart));
-
-                    // Deterministic octant/quadrant placement without floating-point trig in hot path (only runs once at startup)
-                    double angleRadians = ((DeterministicHash.mixStafford13(regionSeed + 0xBF58476D1CE4E5B9L) >>> 11) * 0x1.0p-53) * (Math.PI * 2.0D);
-                    centerQX = (int) Math.round(Math.cos(angleRadians) * distanceQuart);
-                    centerQZ = (int) Math.round(Math.sin(angleRadians) * distanceQuart);
-
-                    if (savedData != null) {
-                        savedData.putPackedQuartCenter(uniqueDef.id(), centerQX, centerQZ);
-                    }
-                }
-
-                int influenceRadiusQuart = Math.max(16, uniqueDef.weight() >> 2);
-                long siteHash = DeterministicHash.hashGridCell(regionalSeed, centerQX, centerQZ);
-                long token = (siteHash & 0xFFFF_FFFF_FFFF_0000L) | (uniqueDef.rawId() & 0xFFFFL);
-
-                quadTree.insert(
-                        uniqueDef.rawId(),
-                        centerQX,
-                        centerQZ,
-                        influenceRadiusQuart,
-                        uniqueDef.weightSquaredQuart(),
-                        token
-                );
-            }
-            this.uniqueQuadTree = quadTree;
+            this.uniqueQuadTree = buildUniqueRegionQuadTree(uniqueList, regionalSeed, savedData);
             this.hasUniqueRegions = true;
         } else {
             this.uniqueQuadTree = null;
@@ -323,6 +282,118 @@ public final class RegionRegistry {
 
         LOGGER.info("RegionalAPI frozen {} region definitions ({} unique regions indexed in QuadTree, Voronoi cell shift={}, cell size={} quarts / {} blocks).",
                 newFlatArray.length, uniqueList.size(), VoronoiEngine2D.getActiveCellShift(), VoronoiEngine2D.getActiveCellSizeQuarts(), VoronoiEngine2D.getActiveCellSizeQuarts() << 2);
+    }
+
+    /**
+     * Synchronizes and persists {@code isUnique == true} region anchor coordinates with the Overworld's
+     * {@link UniqueRegionSavedData} once {@code server.overworld()} is initialized after level creation.
+     *
+     * @param server The running {@link MinecraftServer}.
+     */
+    public synchronized void syncUniqueRegionsWithOverworld(MinecraftServer server) {
+        if (!this.frozen) {
+            freezeAndIndex(server);
+            return;
+        }
+        if (!this.hasUniqueRegions) {
+            return;
+        }
+
+        ServerLevel overworld = server.overworld();
+        if (overworld == null) {
+            return;
+        }
+
+        UniqueRegionSavedData savedData = UniqueRegionSavedData.getOrCreate(overworld);
+        long rawWorldSeed = server.getWorldData().worldGenOptions().seed();
+        long regionalSeed = ClientboundSyncRegionalSeedPacket.computeSaltedRegionalSeed(rawWorldSeed);
+
+        List<RegionDefinition> uniqueList = new ArrayList<>();
+        RegionDefinition[] currentArray = this.flatDefinitionsByRawId;
+        for (int i = 1; i < currentArray.length; i++) {
+            RegionDefinition def = currentArray[i];
+            if (def != null && def.isUnique()) {
+                uniqueList.add(def);
+            }
+        }
+
+        if (uniqueList.isEmpty()) {
+            return;
+        }
+
+        boolean coordinatesChanged = false;
+        UniqueRegionQuadTree currentTree = this.uniqueQuadTree;
+        for (int i = 0; i < uniqueList.size(); i++) {
+            RegionDefinition uniqueDef = uniqueList.get(i);
+            long savedPacked = savedData.getPackedQuartCenter(uniqueDef.id());
+            long currentBlockPacked = (currentTree != null) ? currentTree.findCenterBlockPosPacked(uniqueDef.rawId()) : Long.MIN_VALUE;
+            if (savedPacked != Long.MIN_VALUE && currentBlockPacked != Long.MIN_VALUE) {
+                int savedQX = (int) (savedPacked >> 32);
+                int savedQZ = (int) savedPacked;
+                int currentQX = ((int) (currentBlockPacked >> 32)) >> 2;
+                int currentQZ = ((int) currentBlockPacked) >> 2;
+                if (savedQX != currentQX || savedQZ != currentQZ) {
+                    coordinatesChanged = true;
+                }
+            }
+        }
+
+        this.uniqueQuadTree = buildUniqueRegionQuadTree(uniqueList, regionalSeed, savedData);
+        if (coordinatesChanged) {
+            ThreadLocalRegionCache.invalidateAll();
+            com.regionalapi.api.RegionalApi.getInstance().clearServerCache();
+        }
+    }
+
+    private UniqueRegionQuadTree buildUniqueRegionQuadTree(
+            List<RegionDefinition> uniqueList,
+            long regionalSeed,
+            UniqueRegionSavedData savedData
+    ) {
+        UniqueRegionQuadTree quadTree = new UniqueRegionQuadTree(-1_000_000, -1_000_000, 1_000_000, 1_000_000);
+        for (int i = 0; i < uniqueList.size(); i++) {
+            RegionDefinition uniqueDef = uniqueList.get(i);
+            long packedCenter = (savedData != null) ? savedData.getPackedQuartCenter(uniqueDef.id()) : Long.MIN_VALUE;
+            int centerQX;
+            int centerQZ;
+
+            if (packedCenter != Long.MIN_VALUE) {
+                centerQX = (int) (packedCenter >> 32);
+                centerQZ = (int) packedCenter;
+            } else {
+                // Deterministically compute anchor coordinates from regionalSeed and region ID hash
+                long regionSeed = DeterministicHash.mixStafford13(regionalSeed ^ uniqueDef.id().toString().hashCode());
+                int minRadiusQuart = uniqueDef.uniqueSearchMinRadiusBlocks() >> 2;
+                int maxRadiusQuart = uniqueDef.uniqueSearchMaxRadiusBlocks() >> 2;
+                int spanQuart = Math.max(1, maxRadiusQuart - minRadiusQuart);
+
+                int distanceQuart = minRadiusQuart + (int) (Long.remainderUnsigned(
+                        DeterministicHash.mixStafford13(regionSeed + 0x9E3779B97F4A7C15L), spanQuart));
+
+                // Deterministic octant/quadrant placement without floating-point trig in hot path (only runs once at startup)
+                double angleRadians = ((DeterministicHash.mixStafford13(regionSeed + 0xBF58476D1CE4E5B9L) >>> 11) * 0x1.0p-53) * (Math.PI * 2.0D);
+                centerQX = (int) Math.round(Math.cos(angleRadians) * distanceQuart);
+                centerQZ = (int) Math.round(Math.sin(angleRadians) * distanceQuart);
+
+                if (savedData != null) {
+                    savedData.putPackedQuartCenter(uniqueDef.id(), centerQX, centerQZ);
+                }
+            }
+
+            int influenceRadiusQuart = Math.max(16, uniqueDef.weight() >> 2);
+            long siteHash = DeterministicHash.hashGridCell(regionalSeed, centerQX, centerQZ);
+            long token = (siteHash & 0xFFFF_FFFF_FFFF_0000L) | (uniqueDef.rawId() & 0xFFFFL);
+
+            quadTree.insert(
+                    uniqueDef.rawId(),
+                    centerQX,
+                    centerQZ,
+                    influenceRadiusQuart,
+                    uniqueDef.weightSquaredQuart(),
+                    token
+            );
+        }
+        return quadTree;
     }
 
     public boolean isFrozen() {

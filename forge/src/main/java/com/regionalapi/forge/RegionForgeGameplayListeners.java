@@ -12,6 +12,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.level.ChunkEvent;
+import net.minecraftforge.event.server.ServerAboutToStartEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.event.server.ServerStoppedEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -24,14 +25,21 @@ public final class RegionForgeGameplayListeners {
     private static volatile long activeSaltedRegionalSeed = 0L;
 
     @SubscribeEvent
-    public void onServerStarting(ServerStartingEvent event) {
+    public void onServerAboutToStart(ServerAboutToStartEvent event) {
         MinecraftServer server = event.getServer();
         long rawWorldSeed = server.getWorldData().worldGenOptions().seed();
         activeSaltedRegionalSeed = ClientboundSyncRegionalSeedPacket.computeSaltedRegionalSeed(rawWorldSeed);
 
+        // Freeze registry and lock authoritative seed BEFORE loadLevel() and prepareLevels() generate/load spawn chunks
         ThreadLocalRegionCache.setAuthoritativeRegionalSeed(activeSaltedRegionalSeed);
         RegionalApi.getInstance().clearServerCache();
         RegionRegistry.getInstance().freezeAndIndex(server);
+    }
+
+    @SubscribeEvent
+    public void onServerStarting(ServerStartingEvent event) {
+        // Persist and reconcile UniqueRegionSavedData once Overworld DimensionDataStorage is initialized
+        RegionRegistry.getInstance().syncUniqueRegionsWithOverworld(event.getServer());
     }
 
     @SubscribeEvent

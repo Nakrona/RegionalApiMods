@@ -1,7 +1,8 @@
 package com.regionalapi.mixin;
 
 import com.regionalapi.core.cache.IRegionChunkData;
-import net.minecraft.nbt.ByteArrayTag;
+import com.regionalapi.core.cache.ThreadLocalRegionCache;
+import com.regionalapi.core.region.RegionRegistry;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
@@ -75,9 +76,12 @@ public abstract class MixinChunkSerializer {
         if (chunk == null || compoundTag == null || !compoundTag.contains(REGIONAL_DATA_TAG, Tag.TAG_BYTE_ARRAY)) {
             return;
         }
+        if (!RegionRegistry.getInstance().isFrozen() || ThreadLocalRegionCache.getActiveWorldSeed() == 0L) {
+            return;
+        }
 
         if (chunk instanceof IRegionChunkData chunkData) {
-            com.regionalapi.core.cache.ThreadLocalRegionCache cache = com.regionalapi.core.cache.ThreadLocalRegionCache.get();
+            ThreadLocalRegionCache cache = ThreadLocalRegionCache.get();
             int slot = cache.ensureChunkSlot(chunkPos.x, chunkPos.z);
             boolean expectedHomogeneous = cache.isSlotHomogeneous(slot);
 
