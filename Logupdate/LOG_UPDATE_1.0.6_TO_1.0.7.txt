@@ -1,0 +1,82 @@
+================================================================================
+REGIONALAPI UPDATE LOG: VERSION 1.0.6 -> 1.0.7
+================================================================================
+Project Name       : RegionalAPI (regionalapi)
+Target Minecraft   : 1.21.1 (Java 21)
+Supported Loaders  : Fabric, NeoForge, Minecraft Forge
+Architecture Style : Single-Repository Multi-Loader (:common, :neoforge, :fabric, :forge)
+Mappings           : Official Mojang Mappings (Mojmap)
+External Wrappers  : 0 (No Architectury API)
+Generated Date     : 2026-11-02
+
+--------------------------------------------------------------------------------
+1. EXECUTIVE ARCHITECTURAL SUMMARY
+--------------------------------------------------------------------------------
+Version 1.0.7 resolves three critical platform bugs on NeoForge (and Forge) that
+caused region desynchronization, mid-chunk border jumping, missing persistence data,
+and spawned entity deletion (e.g. Cobblemon Pokémon discarding):
+
+1. Mixin Refmap Missing & Misconfigured in NeoForge JAR:
+   In version 1.0.6, `regionalapi.mixins.json` hardcoded `"refmap": "regionalapi-fabric-refmap.json"`.
+   Because this file was absent in the NeoForge JAR, SpongePowered Mixin failed to
+   remap target injections or failed to apply `MixinChunkAccess` (Duck Interface for
+   `IRegionChunkData`). As a consequence, `chunk instanceof IRegionChunkData` evaluated
+   to false, causing `ChunkRegionAttachment.getOrPopulate()` to fall back to
+   `FallbackRegionChunkData.INSTANCE` (singleRegionId = 0, regionalapi:wilds), or forcing
+   client-side queries to evaluate raw quart coordinates in the middle of chunks.
+   Resolved by harmonizing the refmap name to `regionalapi.refmap.json` across all loaders,
+   including default refmap resource in `:common` and configuring Fabric Loom's
+   `defaultRefmapName = "regionalapi.refmap.json"`.
+
+2. Server Lifecycle Timing Premature Execution:
+   In `RegionGameplayListeners` (NeoForge) and `RegionForgeGameplayListeners` (Forge),
+   mod indexing was attached to `ServerAboutToStartEvent`. At this phase, `server.overworld()`
+   is null. Consequently, `UniqueRegionSavedData.getOrCreate(overworld)` was bypassed,
+   failing to persist or load unique region coordinates from disk.
+   Resolved by migrating the listener to `ServerStartingEvent` where `server.overworld()`
+   is fully initialized, achieving 1:1 parity with Fabric's `ServerLifecycleEvents.SERVER_STARTING`.
+
+3. Intrusive Mob Spawn Cancellation (`mob.discard()` Execution):
+   In NeoForge 1.21.1, calling `event.setSpawnCancelled(true)` on `FinalizeSpawnEvent`
+   immediately executes `mob.discard()`. In Cobblemon spawner pipelines
+   (`SingleEntitySpawnAction -> finalizeSpawn -> addFreshEntity`), discarding the mob
+   causes Vanilla to reject adding the entity to the level, leading Cobblemon to consume
+   spawn quotas without any Pokémon appearing. Fabric had no mob spawn cancellation listener.
+   Resolved by removing the intrusive `onFinalizeMobSpawn` listener from NeoForge and Forge.
+   Entity spawn filtering is reserved for consumer mods via `IPlatformHelper.postEntitySpawnInRegion()`.
+
+4. Redundant Event Listener Removal & Multi-Loader Parity:
+   Removed duplicate listeners (`onEntityEnteringSection` and `onPlayerTickPost`) from
+   NeoForge and Forge listeners. Player chunk crossings and conditional border-chunk
+   tick polling are authoritatively handled by `:common/mixin/MixinServerPlayer.java`
+   across all loaders identically.
+
+--------------------------------------------------------------------------------
+2. DETAILED CODE MODIFICATIONS
+--------------------------------------------------------------------------------
+
+A. Mixin Configuration (`common/src/main/resources/regionalapi.mixins.json`)
+   - Changed `"refmap": "regionalapi-fabric-refmap.json"` to `"refmap": "regionalapi.refmap.json"`.
+   - Added placeholder `common/src/main/resources/regionalapi.refmap.json` (`{"mappings":{},"data":{}}`)
+     for Mojmap environments (NeoForge & Forge).
+
+B. Fabric Build Configuration (`fabric/build.gradle`)
+   - Configured `loom.mixin.defaultRefmapName = "${project.mod_id}.refmap.json"`.
+   - Configured `processResources` to exclude the placeholder refmap from `:common` so
+     Fabric Loom generates the real remapped Intermediary refmap as `regionalapi.refmap.json`.
+
+C. NeoForge Gameplay Listeners (`neoforge/src/main/java/com/regionalapi/neoforge/RegionGameplayListeners.java`)
+   - Replaced `ServerAboutToStartEvent` with `ServerStartingEvent` (`onServerStarting`).
+   - Removed `onFinalizeMobSpawn(FinalizeSpawnEvent)`.
+   - Removed redundant `onEntityEnteringSection(EntityEvent.EnteringSection)`.
+   - Removed redundant `onPlayerTickPost(PlayerTickEvent.Post)`.
+
+D. Forge Gameplay Listeners (`forge/src/main/java/com/regionalapi/forge/RegionForgeGameplayListeners.java`)
+   - Replaced `ServerAboutToStartEvent` with `ServerStartingEvent` (`onServerStarting`).
+   - Removed `onFinalizeMobSpawn(MobSpawnEvent.FinalizeSpawn)`.
+   - Removed redundant `onEntityEnteringSection(EntityEvent.EnteringSection)`.
+   - Removed redundant `onPlayerTickPost(TickEvent.PlayerTickEvent.Post)`.
+
+E. Version Increment (`gradle.properties`)
+   - Bumped `mod_version` from `1.0.6` to `1.0.7`.
+================================================================================

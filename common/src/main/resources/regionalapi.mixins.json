@@ -3,7 +3,7 @@
   "minVersion": "0.8",
   "package": "com.regionalapi.mixin",
   "compatibilityLevel": "JAVA_21",
-  "refmap": "regionalapi-fabric-refmap.json",
+  "refmap": "regionalapi.refmap.json",
   "mixins": [
     "MixinBiomeSource",
     "MixinMultiNoiseBiomeSource",

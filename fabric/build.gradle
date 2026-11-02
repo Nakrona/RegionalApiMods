@@ -6,6 +6,12 @@ base {
     archivesName = "${project.mod_id}-fabric"
 }
 
+loom {
+    mixin {
+        defaultRefmapName = "${project.mod_id}.refmap.json"
+    }
+}
+
 dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     mappings loom.officialMojangMappings()
@@ -20,7 +26,9 @@ tasks.named('compileJava', JavaCompile) {
 }
 
 processResources {
-    from project(':common').sourceSets.main.resources
+    from(project(':common').sourceSets.main.resources) {
+        exclude "${project.mod_id}.refmap.json"
+    }
 
     var replaceProperties = [
             minecraft_version             : project.minecraft_version,

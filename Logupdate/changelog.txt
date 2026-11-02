@@ -53,3 +53,11 @@ Target: Minecraft 1.21.1 (Java 21) | Fabric, NeoForge, Forge
 * FIXED: Fallback handling in `ClientRegionTracker.getDebugRegionString()` so fallback Wilds gracefully defer to authoritative server-synced player region (`currentRegionId`).
 * ENFORCED: 100% mathematical Voronoi parity and zero-GC performance across all worker threads, server threads, and client render threads.
 
+--- [VERSION 1.0.7] ---
+* FIXED (CRITICAL): Unified mixin refmap configuration (`regionalapi.refmap.json`). Replaced hardcoded loader-specific refmap reference in `regionalapi.mixins.json` and established standard refmap generation/packaging across NeoForge, Fabric, and Forge.
+* FIXED (CRITICAL): SpongePowered Mixin application failure on NeoForge (`MixinChunkAccess`), resolving the bug where `ChunkAccess instanceof IRegionChunkData` evaluated to false and caused whole-world fallback to `regionalapi:wilds` or mid-chunk quart-level border hopping.
+* FIXED (CRITICAL): Corrected server lifecycle timing on NeoForge and Forge. Migrated `onServerAboutToStart` (`ServerAboutToStartEvent`) to `onServerStarting` (`ServerStartingEvent`), ensuring `server.overworld()` is fully loaded and non-null when initializing `UniqueRegionSavedData`.
+* FIXED (CRITICAL): Removed intrusive `onFinalizeMobSpawn` listener from `RegionGameplayListeners` (NeoForge) and `RegionForgeGameplayListeners` (Forge). Prevents `event.setSpawnCancelled(true)` from discarding spawned entities via `mob.discard()`, fixing entity and Pokémon spawning mechanics (e.g. Cobblemon).
+* SYNCHRONIZED: Full 1:1 multi-loader parity between Fabric, NeoForge, and Forge event handling by delegating player chunk transitions and tick polling exclusively to `MixinServerPlayer` and `PlayerLoggedInEvent`.
+
+
