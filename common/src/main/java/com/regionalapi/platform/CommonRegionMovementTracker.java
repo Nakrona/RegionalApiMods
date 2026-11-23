@@ -13,6 +13,9 @@ import net.minecraft.world.level.chunk.ChunkAccess;
 
 /**
  * Universal Zero-GC player region movement evaluator shared across all loaders.
+ * <p>
+ * Because every 16x16 chunk is guaranteed homogeneous (at most 1 region per chunk),
+ * region transitions only occur when crossing chunk boundaries.
  */
 public final class CommonRegionMovementTracker {
 
@@ -23,8 +26,7 @@ public final class CommonRegionMovementTracker {
     /**
      * Evaluates player chunk transition.
      * Always resolves coordinates strictly from the player's true current block position as the
-     * single source of truth, guaranteeing quadrant indices match the chunk boundaries and preventing
-     * transient border-flip artifacts.
+     * single source of truth, guaranteeing every 16x16 chunk resolves to a single homogeneous region.
      */
     public static void onPlayerEnterChunk(ServerPlayer player, int chunkX, int chunkZ) {
         if (!(player instanceof IPlayerRegionTracker tracker)) {
@@ -38,6 +40,7 @@ public final class CommonRegionMovementTracker {
         int qx = blockX >> 2;
         int qz = blockZ >> 2;
         tracker.regional$updateLastQuartPos(qx, qz);
+        tracker.regional$setInBorderChunk(false);
 
         ServerLevel level = player.serverLevel();
         ChunkAccess chunk = level.getChunkSource().getChunkNow(actualChunkX, actualChunkZ);
@@ -45,29 +48,19 @@ public final class CommonRegionMovementTracker {
         short currentRegionId;
         if (chunk != null) {
             IRegionChunkData chunkData = ChunkRegionAttachment.getOrPopulate(chunk);
-            boolean homogeneous = chunkData.regional$isHomogeneous();
-            tracker.regional$setInBorderChunk(!homogeneous);
-            currentRegionId = homogeneous
-                    ? chunkData.regional$getSingleRegionId()
-                    : chunkData.regional$getRegionAtQuart(qx, qz);
+            currentRegionId = chunkData.regional$getSingleRegionId();
         } else {
             ThreadLocalRegionCache cache = ThreadLocalRegionCache.get();
             int slot = cache.ensureChunkSlot(actualChunkX, actualChunkZ);
-            boolean homogeneous = cache.isSlotHomogeneous(slot);
-            tracker.regional$setInBorderChunk(!homogeneous);
-            currentRegionId = homogeneous
-                    ? cache.getSlotFirstRegionId(slot)
-                    : cache.getRegionAtQuart(qx, qz);
+            currentRegionId = cache.getSlotFirstRegionId(slot);
         }
 
         checkAndFirePlayerRegionTransition(player, tracker, currentRegionId);
     }
 
     /**
-     * Conditional Border-Chunk Polling: returns immediately when the player
-     * is inside a homogeneous chunk (`!tracker.regional$isInBorderChunk()`). Only evaluates QuartPos boundaries
-     * when the player is actively inside a border chunk (`isHomogeneous == false`) and has moved into
-     * a different 4x4 QuartPos cell.
+     * Retained for binary backward compatibility. Returns immediately with zero overhead
+     * because every chunk is guaranteed homogeneous (`inBorderChunk` is always `false`).
      */
     public static void onPlayerTick(ServerPlayer player) {
         if (!(player instanceof IPlayerRegionTracker tracker) || !tracker.regional$isInBorderChunk()) {

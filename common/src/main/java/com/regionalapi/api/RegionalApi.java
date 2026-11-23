@@ -18,7 +18,7 @@ import net.minecraft.world.level.chunk.ChunkAccess;
  * Provides sub-microsecond, Zero-GC region queries for external mods and bridge layers
  * (e.g., {@code MedieavalRegional}, {@code RegionalCobblemonBridge}). All hot-path queries operate on primitive
  * {@code short} IDs and {@code int} coordinates without allocating {@code BlockPos},
- * {@code ChunkPos}, or boxed numbers.
+ * {@code ChunkPos}, or boxed numbers. Every 16x16 chunk resolves to at most 1 homogeneous region.
  */
 public final class RegionalApi {
 
@@ -26,7 +26,7 @@ public final class RegionalApi {
 
     /**
      * Server-thread fastutil primitive cache mapping {@code ChunkPos.asLong(cx, cz)} to
-     * homogeneous {@code short} region IDs (or {@code -1} if border chunk).
+     * homogeneous {@code short} region IDs.
      */
     private final Long2ShortOpenHashMap serverHomogeneousChunkCache = new Long2ShortOpenHashMap(4096);
 
@@ -133,21 +133,14 @@ public final class RegionalApi {
             ChunkAccess loadedChunk = level.getChunkSource().getChunkNow(chunkX, chunkZ);
             if (loadedChunk != null) {
                 IRegionChunkData data = ChunkRegionAttachment.getOrPopulate(loadedChunk);
-                if (data.regional$isHomogeneous()) {
-                    short id = data.regional$getSingleRegionId();
-                    this.serverHomogeneousChunkCache.put(chunkKey, id);
-                    return id;
-                } else {
-                    this.serverHomogeneousChunkCache.put(chunkKey, (short) -1);
-                    return data.regional$getRegionAtQuart(qx, qz);
-                }
+                short id = data.regional$getSingleRegionId();
+                this.serverHomogeneousChunkCache.put(chunkKey, id);
+                return id;
             }
         } else {
             ChunkAccess loadedChunk = level.getChunkSource().getChunkNow(chunkX, chunkZ);
             if (loadedChunk instanceof IRegionChunkData data && data.regional$isInitialized()) {
-                return data.regional$isHomogeneous()
-                        ? data.regional$getSingleRegionId()
-                        : data.regional$getRegionAtQuart(qx, qz);
+                return data.regional$getSingleRegionId();
             }
         }
 

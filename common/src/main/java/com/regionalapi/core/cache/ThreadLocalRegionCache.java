@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * concurrently across worker threads without a {@code ChunkAccess} reference. This cache
  * stores 32 chunks per thread with pre-allocated {@code short[32][16]} horizontal grids,
  * eliminating vertical Voronoi recalculation and guaranteeing Zero-GC pressure.
+ * Every chunk resolves to a single homogeneous region ID (1 chunk = max 1 region).
  */
 public final class ThreadLocalRegionCache {
 
@@ -40,6 +41,7 @@ public final class ThreadLocalRegionCache {
 
     public ThreadLocalRegionCache() {
         Arrays.fill(this.keys, Long.MIN_VALUE);
+        Arrays.fill(this.homogeneousFlags, true);
     }
 
     /**
@@ -137,13 +139,12 @@ public final class ThreadLocalRegionCache {
     /**
      * Resolves the primitive {@code short} region ID at {@code (qx, qz)} in QuartPos coordinates.
      * <p>
-     * On cache hit, performs an O(1) fast-path check on {@code homogeneousFlags[slot]} or bitwise
-     * lookup into {@code quartGrids[slot][((qz & 3) << 2) | (qx & 3)]}.
-     * On cache miss, populates {@code quartGrids[slot]} in-place with zero heap allocations.
+     * Because every chunk is guaranteed homogeneous (1 chunk = 1 region), performs an O(1)
+     * lookup returning {@code quartGrids[slot][0]} with zero heap allocations.
      *
      * @param qx Horizontal QuartPos X ({@code blockX >> 2}).
      * @param qz Horizontal QuartPos Z ({@code blockZ >> 2}).
-     * @return The primitive {@code short} region ID.
+     * @return The primitive {@code short} region ID for the chunk.
      */
     public short getRegionAtQuart(int qx, int qz) {
         int chunkX = qx >> 2;
@@ -155,12 +156,7 @@ public final class ThreadLocalRegionCache {
             populateSlot(slot, chunkX, chunkZ, chunkKey);
         }
 
-        if (this.homogeneousFlags[slot]) {
-            return this.quartGrids[slot][0];
-        }
-
-        int columnIndex = ((qz & 3) << 2) | (qx & 3);
-        return this.quartGrids[slot][columnIndex];
+        return this.quartGrids[slot][0];
     }
 
     /**
@@ -180,7 +176,7 @@ public final class ThreadLocalRegionCache {
     }
 
     public boolean isSlotHomogeneous(int slot) {
-        return this.homogeneousFlags[slot];
+        return true;
     }
 
     public short getSlotFirstRegionId(int slot) {
@@ -194,7 +190,7 @@ public final class ThreadLocalRegionCache {
     private void populateSlot(int slot, int chunkX, int chunkZ, long chunkKey) {
         RegionRegistry registry = RegionRegistry.getInstance();
         short[] gridBuffer = this.quartGrids[slot];
-        boolean homogeneous = VoronoiEngine2D.evaluateChunkRegions(
+        VoronoiEngine2D.evaluateChunkRegions(
                 activeWorldSeed,
                 chunkX,
                 chunkZ,
@@ -202,7 +198,7 @@ public final class ThreadLocalRegionCache {
                 registry.getMaxFiniteRadiusSqQuart(),
                 gridBuffer
         );
-        this.homogeneousFlags[slot] = homogeneous;
+        this.homogeneousFlags[slot] = true;
         this.keys[slot] = (registry.isFrozen() && activeWorldSeed != 0L) ? chunkKey : Long.MIN_VALUE;
     }
 }

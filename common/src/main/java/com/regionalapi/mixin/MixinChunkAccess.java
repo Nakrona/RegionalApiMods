@@ -7,10 +7,9 @@ import net.minecraft.world.level.chunk.ChunkAccess;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 
-import java.util.Arrays;
-
 /**
  * Mixin injecting the Zero-GC {@link IRegionChunkData} Duck Interface into {@link ChunkAccess}.
+ * Enforces strict single-region per chunk homogeneity (1 chunk = max 1 region).
  */
 @Mixin(ChunkAccess.class)
 public abstract class MixinChunkAccess implements IRegionChunkData {
@@ -39,7 +38,7 @@ public abstract class MixinChunkAccess implements IRegionChunkData {
 
     @Override
     public boolean regional$isHomogeneous() {
-        return this.regional$homogeneous;
+        return true;
     }
 
     @Override
@@ -54,11 +53,7 @@ public abstract class MixinChunkAccess implements IRegionChunkData {
 
     @Override
     public short regional$getRegionAtQuart(int qx, int qz) {
-        if (this.regional$homogeneous || this.regional$borderQuartGrid == null) {
-            return this.regional$singleRegionId;
-        }
-        int columnIndex = ((qz & 3) << 2) | (qx & 3);
-        return this.regional$borderQuartGrid[columnIndex];
+        return this.regional$singleRegionId;
     }
 
     @Override
@@ -73,15 +68,9 @@ public abstract class MixinChunkAccess implements IRegionChunkData {
 
     @Override
     public void regional$setBorder(short[] quartGrid16) {
-        boolean ready = RegionRegistry.getInstance().isFrozen() && ThreadLocalRegionCache.getActiveWorldSeed() != 0L;
-        this.regional$initialized = ready;
-        this.regional$populatedEpoch = ready ? ThreadLocalRegionCache.getCurrentEpoch() : 0L;
-        this.regional$homogeneous = false;
-        if (this.regional$borderQuartGrid == null || this.regional$borderQuartGrid.length != 16) {
-            this.regional$borderQuartGrid = Arrays.copyOf(quartGrid16, 16);
-        } else {
-            System.arraycopy(quartGrid16, 0, this.regional$borderQuartGrid, 0, 16);
-        }
-        this.regional$singleRegionId = this.regional$borderQuartGrid[0];
+        short uniformId = (quartGrid16 != null && quartGrid16.length > 0)
+                ? quartGrid16[0]
+                : RegionRegistry.FALLBACK_WILDS_ID;
+        regional$setHomogeneous(uniformId);
     }
 }

@@ -1,0 +1,45 @@
+================================================================================
+REGIONALAPI UPDATE LOG: VERSION 1.0.8 -> 1.0.9
+================================================================================
+Project Name       : RegionalAPI (regionalapi)
+Target Minecraft   : 1.21.1 (Java 21)
+Supported Loaders  : Fabric, NeoForge, Minecraft Forge
+Architecture Style : Single-Repository Multi-Loader (:common, :neoforge, :fabric, :forge)
+Mappings           : Official Mojang Mappings (Mojmap)
+External Wrappers  : 0 (No Architectury API)
+Generated Date     : 2026-11-09
+
+--------------------------------------------------------------------------------
+1. EXECUTIVE ARCHITECTURAL SUMMARY
+--------------------------------------------------------------------------------
+Version 1.0.9 enforces strict single-region per chunk homogeneity (1 Chunk =
+Maximum 1 Region), eliminating the bug where a single 16x16 chunk could contain
+2 or more distinct regions when crossed by a Laguerre-Voronoi border:
+
+1. Canonical Chunk-Center Voronoi Quantization (`VoronoiEngine2D`):
+   - Previously, `VoronoiEngine2D` evaluated regional dominance at individual
+     4x4 `QuartPos` columns, classifying chunks straddling a Voronoi border as
+     heterogeneous (`isHomogeneous == false`) with a 16-element `short[16]` grid.
+   - In v1.0.9, `VoronoiEngine2D.evaluateRegionAtQuart(...)` snaps any horizontal
+     `QuartPos` coordinate `(quartX, quartZ)` to the canonical center `QuartPos`
+     of its containing 16x16 chunk:
+       int sampleQuartX = (quartX & ~3) + 2;
+       int sampleQuartZ = (quartZ & ~3) + 2;
+   - `VoronoiEngine2D.evaluateChunkRegions(...)` now performs a single Voronoi
+     evaluation per chunk at `(chunkX << 2) + 2, (chunkZ << 2) + 2`, populates
+     `outQuartGrid` with the uniform `short` region ID, and always returns `true`.
+
+2. Streamlined 3-Tier Zero-GC Caching & 3-Byte NBT Upgrade:
+   - `ThreadLocalRegionCache`: `getRegionAtQuart(qx, qz)` directly returns
+     `this.quartGrids[slot][0]` in O(1) time; `isSlotHomogeneous(slot)` is
+     always `true`.
+   - `MixinChunkAccess`: `regional$isHomogeneous()` is always `true`, and
+     `regional$setBorder(...)` normalizes to `regional$setHomogeneous(...)`.
+   - `MixinChunkSerializer`: Always writes the compact 3-byte homogeneous NBT
+     format (`bytes[0] = 1` + `short` ID) and automatically upgrades any legacy
+     33-byte border tags from older worlds upon loading.
+   - `RegionalApi` & `CommonRegionMovementTracker`: Player region transitions
+     only occur across 16x16 chunk boundaries (`inBorderChunk = false`),
+     eliminating per-tick sub-chunk `QuartPos` polling while preserving 100%
+     public API and binary backward compatibility.
+================================================================================
