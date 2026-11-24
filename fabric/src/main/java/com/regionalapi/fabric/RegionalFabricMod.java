@@ -42,7 +42,7 @@ public final class RegionalFabricMod implements ModInitializer {
 
         // 2. Command registration
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
-            LocateRegionCommand.register(dispatcher);
+            LocateRegionCommand.register(dispatcher, registryAccess);
         });
 
         // 3. Server lifecycle listeners

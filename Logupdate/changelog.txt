@@ -1,5 +1,5 @@
 ================================================================================
-REGIONALAPI CHANGELOG: VERSION 1.0.0 -> 1.0.9
+REGIONALAPI CHANGELOG: VERSION 1.0.0 -> 1.0.11
 ================================================================================
 Target: Minecraft 1.21.1 (Java 21) | Fabric, NeoForge, Forge
 
@@ -70,3 +70,19 @@ Target: Minecraft 1.21.1 (Java 21) | Fabric, NeoForge, Forge
 * UPDATED: `VoronoiEngine2D.evaluateRegionAtQuart` now quantizes horizontal coordinates to the canonical center `QuartPos` of the containing 16x16 chunk (`sampleQuartX = (quartX & ~3) + 2`, `sampleQuartZ = (quartZ & ~3) + 2`), and `evaluateChunkRegions` performs a single evaluation per chunk at `(chunkX << 2) + 2, (chunkZ << 2) + 2`.
 * OPTIMIZED: `ThreadLocalRegionCache`, `MixinChunkAccess`, `RegionalApi.getRegionRawId`, and `CommonRegionMovementTracker` now operate on 100% homogeneous chunks in O(1) time, eliminating sub-chunk border polling on `ServerPlayer` ticks.
 * UPDATED: `MixinChunkSerializer` writes all chunks using the compact 3-byte homogeneous NBT tag (`bytes[0] = 1` + `short` region ID) and automatically upgrades legacy 33-byte border NBT tags from existing worlds on chunk read.
+
+--- [VERSION 1.0.10] ---
+* ADDED: Region-constrained biome discovery via `/locate region <region_id> biome <biome_id | #biome_tag>` with full vanilla/modded biome and tag tab-completion (`ResourceOrTagArgument`).
+* ADDED: Region-constrained structure discovery via `/locate region <region_id> structure <structure_id | #structure_tag>` with full vanilla/modded structure and tag tab-completion (`ResourceOrTagKeyArgument`).
+* ADDED: `com.regionalapi.core.search.RegionSpatialLocator` providing Zero-GC O(1) region pre-filtering via `ThreadLocalRegionCache`, 3D `BiomeMaskRule` fail-fast & elevation-aware sampling, asynchronous worker offloading (`Util.backgroundExecutor()`), and bounded main-thread `StructureManager` / `ChunkStatus.STRUCTURE_STARTS` verification across `INFINITE_TESSELLATION`, `FINITE_CENTRALIZED`, and `isUnique == true` QuadTree regions.
+* FIXED: Nearest region ring search now begins at ring `r = 0` (checking the origin's own Voronoi cell) and resolves `regionalapi:wilds` boundary points under `FINITE_CENTRALIZED` mode.
+* UPDATED: `LocateRegionCommand.register` now accepts `CommandBuildContext` and is synchronized atomically across `:common`, `:neoforge`, `:fabric`, and `:forge`.
+* UPDATED: Added English localization keys (`commands.locate.region.biome.*`, `commands.locate.region.structure.*`) in `en_us.json`.
+
+--- [VERSION 1.0.11] ---
+* ADDED: `com.regionalapi.core.region.RegionContentRegistry` — optional, thread-safe declarative metadata registry allowing addons to associate biome IDs, biome tags, structure IDs, and structure tags with regions for inter-addon introspection with zero worldgen hot-path overhead.
+* ADDED: Public `RegionalApi` registration and introspection methods (`registerRegionBiome`, `registerRegionBiomes`, `registerRegionBiomeTag`, `registerRegionBiomeTags`, `registerRegionStructure`, `registerRegionStructures`, `registerRegionStructureTag`, `registerRegionStructureTags`, `getRegisteredRegionBiomes`, `getRegisteredRegionBiomeTags`, `hasRegisteredRegionBiomes`, `getRegisteredRegionStructures`, `getRegisteredRegionStructureTags`, `hasRegisteredRegionStructures`, `isBiomeRegisteredForRegion`, `isStructureRegisteredForRegion`) — 100% optional and backward-compatible.
+* UPDATED: `LocateRegionCommand` now provides server-authoritative region-scoped tab-completion:
+  - `/locate region <region> structure` suggests exclusively the structures and tags registered to `<region>` when present, falling back to global `Registries.STRUCTURE` otherwise.
+  - `/locate region <region> biome` suggests exclusively the region's biomes/tags when explicitly registered or when constrained by a dual `BiomeMaskRule` (both surface and cave overrides set), falling back to global `Registries.BIOME` otherwise.
+* FIXED: `RegionSpatialLocator#locateStructureInRegion` now executes full vanilla-exact ring-by-ring (`r = 0 .. 100`) chunk verification via `StructureManager#checkStructurePresence` and `ChunkStatus.STRUCTURE_STARTS` with O(1) RegionalAPI chunk pre-filtering and ring-level early exit, removing artificial candidate/chunk-load/time truncation caps that caused rare biome-specific structures (such as `minecraft:village_desert`) to return false negatives.

@@ -1,5 +1,5 @@
 ================================================================================
-REGIONAL API (v1.0.9) - ARCHITECTURAL OVERVIEW & SYSTEM DOCUMENTATION
+REGIONAL API (v1.0.11) - ARCHITECTURAL OVERVIEW & SYSTEM DOCUMENTATION
 Target: Minecraft 1.21.1 (Java 21) | Loaders: NeoForge, Fabric, Forge (Mojmap)
 ================================================================================
 
@@ -15,7 +15,7 @@ RegionalAPI is designed as a pure core library engine following a strict One-Way
 Addon / Bridge Architecture:
 - RegionalAPI (Core Engine): Handles spatial Laguerre-Voronoi math, salted seed
   derivation, 3-tier Zero-GC chunk-level region caching, 3D vertical biome
-  masking, `/locate region` command integration, F3 HUD display, and cross-loader
+  masking, `/locate region <region> [biome|structure]` command integration, F3 HUD display, and cross-loader
   regional events (`PlayerEnterRegion`, `EntitySpawnInRegion`).
 - Consumer Addons / Bridges (e.g., RegionalCobblemonBridge, MedieavalRegional,
   RegionalXaero): Register custom `RegionDefinition` instances and hook into
@@ -121,7 +121,7 @@ thousands of times per second, RegionalAPI uses a 3-Tier Zero-GC Caching Pipelin
   center Voronoi evaluation executes only once per chunk.
 
 
-6. CURRENT CAPABILITIES SUMMARY (v1.0.9)
+6. CURRENT CAPABILITIES SUMMARY (v1.0.11)
 --------------------------------------------------------------------------------
 - Built-in in RegionalAPI Core (`com.regionalapi`):
   * Chunk-Homogeneous 2D Laguerre-Voronoi + 2D QuadTree Region Partitioning Engine
@@ -130,14 +130,29 @@ thousands of times per second, RegionalAPI uses a 3-Tier Zero-GC Caching Pipelin
     `syncUniqueRegionsWithOverworld` after Overworld initialization)
   * 3D Vertical Biome Masking (`BiomeMaskRule`: `STATIC_Y_THRESHOLD` &
     `TERRAIN_FOLLOWING_DEPTH`, Surface-Only, Cave-Only, or Dual Override)
+  * Optional Declarative Region Content Metadata & Introspection (`RegionContentRegistry`):
+    Addons can register region-bound biomes, structures, and tags via `RegionalApi`
+    (`registerRegionBiome*`, `registerRegionStructure*`) and query them from any
+    third-party mod (`getRegisteredRegionBiomes`, `getRegisteredRegionStructures`,
+    `isBiomeRegisteredForRegion`, `isStructureRegisteredForRegion`), with automatic
+    inclusion of `BiomeMaskRule` overrides.
   * Sub-Microsecond O(1) Spatial Lookup API (`getRegionRawId`, `getRegionId`,
     `getRegionDefinition`, `getRegionByRawId`, `getRawIdForLocation`,
     `getUniqueRegionCenterBlockPacked`)
   * Clientbound Salted Seed & Player Region Synchronization Packets
   * Cross-Loader Region Events (`PlayerEnterRegionEvent`, `EntitySpawnInRegionEvent`,
     `FabricRegionalEvents`) across NeoForge, Fabric, and Forge
-  * Vanilla `/locate region <region_id>` Command Integration & F3 Debug Overlay
-    (`Region: <namespace:path>`)
+  * Vanilla `/locate region` Command Suite & F3 Debug Overlay (`Region: <namespace:path>`):
+    - `/locate region <region_id>`
+    - `/locate region <region_id> biome <biome_id | #biome_tag>`
+    - `/locate region <region_id> structure <structure_id | #structure_tag>`
+    Powered by `RegionSpatialLocator` with O(1) region pre-filtering, 3D
+    `BiomeMaskRule` awareness, async worker offloading (`Util.backgroundExecutor()`)
+    for biomes, vanilla-exact ring-by-ring (`r = 0 .. 100`) `StructureManager` /
+    `ChunkStatus.STRUCTURE_STARTS` verification for structures (zero artificial
+    candidate/time truncation), and region-scoped server-authoritative
+    tab-completion (automatically scoped for dual `BiomeMaskRule` and explicitly
+    registered region biomes/structures, falling back to global registries otherwise).
 
 - Handled via Addon / Bridge Layer (e.g., RegionalCobblemonBridge, MedieavalRegional):
   * Domain-specific Regional Spawning, Structure Gatekeeping, & Gameplay Rules

@@ -1,5 +1,10 @@
 {
   "commands.locate.region.success": "The nearest %s is at %s (%s blocks away)",
   "commands.locate.region.invalid": "Unknown region: %s",
-  "commands.locate.region.not_found": "Could not find region %s within %s blocks"
+  "commands.locate.region.not_found": "Could not find region %s within %s blocks",
+  "commands.locate.region.biome.success": "The nearest %s in region %s is at %s (%s blocks away)",
+  "commands.locate.region.biome.not_found": "Could not find biome %s inside region %s",
+  "commands.locate.region.structure.success": "The nearest %s in region %s is at %s (%s blocks away)",
+  "commands.locate.region.structure.not_found": "Could not find structure %s inside region %s",
+  "commands.locate.region.structure.invalid": "There is no structure with type \"%s\""
 }

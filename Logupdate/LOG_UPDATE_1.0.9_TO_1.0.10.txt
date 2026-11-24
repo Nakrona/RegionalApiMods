@@ -1,0 +1,60 @@
+================================================================================
+REGIONALAPI UPDATE LOG: VERSION 1.0.9 -> 1.0.10
+================================================================================
+Project Name       : RegionalAPI (regionalapi)
+Target Minecraft   : 1.21.1 (Java 21)
+Supported Loaders  : Fabric, NeoForge, Minecraft Forge
+Architecture Style : Single-Repository Multi-Loader (:common, :neoforge, :fabric, :forge)
+Mappings           : Official Mojang Mappings (Mojmap)
+External Wrappers  : 0 (No Architectury API)
+Generated Date     : 2026-11-24
+
+--------------------------------------------------------------------------------
+1. EXECUTIVE ARCHITECTURAL SUMMARY
+--------------------------------------------------------------------------------
+Version 1.0.10 extends RegionalAPI's built-in `/locate region` command so
+operators and developers can locate not only a region itself, but also specific
+biomes (or biome tags) and structures (or structure tags) strictly inside that
+target region—while keeping RegionalAPI a pure, zero-bloat core framework:
+
+1. Extended `/locate region` Command Tree (`LocateRegionCommand`):
+   - `/locate region <region_id>` (100% backward-compatible)
+   - `/locate region <region_id> biome <biome_id | #biome_tag>`
+   - `/locate region <region_id> structure <structure_id | #structure_tag>`
+   - Uses native Minecraft 1.21.1 `ResourceOrTagArgument` (`Registries.BIOME`)
+     and `ResourceOrTagKeyArgument` (`Registries.STRUCTURE`) for automatic tab
+     completion across all vanilla and modded biomes, structures, and `#tags`.
+   - Produces vanilla-style green clickable coordinates (`/tp @s X Y Z` for
+     3D biomes; `/tp @s X ~ Z` for structures) with block distance calculations
+     and zero extra chat spam.
+
+2. Zero-GC, Thread-Safe Region-Constrained Spatial Locator (`RegionSpatialLocator`):
+   - Biome Discovery (`locateBiomeInRegionAsync`):
+     * Offloads 3D spiral & multi-anchor biome search to `Util.backgroundExecutor()`.
+     * Evaluates O(1) `ThreadLocalRegionCache.get().getRegionAtQuart(qx, qz)`
+       before calling `BiomeSource#getNoiseBiome(...)`, discarding out-of-region
+       samples in nanoseconds.
+     * Honors 3D `BiomeMaskRule` overrides: fails fast when a dual override
+       excludes the requested biome and prioritizes mask-guaranteed elevations.
+   - Structure Discovery (`locateStructureInRegionAsync`):
+     * Snapshots `ChunkGeneratorStructureState` placements (`RandomSpreadStructurePlacement`
+       and `ConcentricRingsStructurePlacement`) safely on the main server thread.
+     * Filters and sorts candidate `ChunkPos` asynchronously on
+       `Util.backgroundExecutor()` using O(1) chunk-homogeneous Voronoi checks
+       and `StructurePlacement#isStructureChunk(...)`.
+     * Verifies candidate structure starts back on the main server thread via
+       `StructureManager#checkStructurePresence(...)` and
+       `ChunkStatus.STRUCTURE_STARTS` within strict chunk-load and time budgets.
+   - Mode & Edge-Case Parity:
+     * Restricts searches for `isUnique == true` regions to their exact
+       `UniqueRegionQuadTree` influence bounds.
+     * Begins Voronoi ring search at `r = 0` and handles `regionalapi:wilds`
+       exterior boundary lookup under `FINITE_CENTRALIZED` mode.
+
+3. Atomic 4-Module Synchronization (`:common`, `:neoforge`, `:fabric`, `:forge`):
+   - Updated `LocateRegionCommand.register(CommandDispatcher, CommandBuildContext)`
+     across `RegionGameplayListeners` (`:neoforge`), `RegionalFabricMod`
+     (`:fabric`), and `RegionForgeGameplayListeners` (`:forge`).
+   - Added English localization entries (`commands.locate.region.biome.*` and
+     `commands.locate.region.structure.*`) in `en_us.json`.
+================================================================================

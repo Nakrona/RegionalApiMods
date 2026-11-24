@@ -50,7 +50,7 @@ public final class RegionGameplayListeners {
 
     @SubscribeEvent
     public void onRegisterCommands(RegisterCommandsEvent event) {
-        LocateRegionCommand.register(event.getDispatcher());
+        LocateRegionCommand.register(event.getDispatcher(), event.getBuildContext());
     }
 
     @SubscribeEvent

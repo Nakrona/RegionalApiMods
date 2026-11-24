@@ -1,0 +1,64 @@
+================================================================================
+REGIONALAPI UPDATE LOG: VERSION 1.0.10 -> 1.0.11
+================================================================================
+Project Name       : RegionalAPI (regionalapi)
+Target Minecraft   : 1.21.1 (Java 21)
+Supported Loaders  : Fabric, NeoForge, Minecraft Forge
+Architecture Style : Single-Repository Multi-Loader (:common, :neoforge, :fabric, :forge)
+Mappings           : Official Mojang Mappings (Mojmap)
+External Wrappers  : 0 (No Architectury API)
+Generated Date     : 2026-11-24
+
+--------------------------------------------------------------------------------
+1. EXECUTIVE ARCHITECTURAL SUMMARY
+--------------------------------------------------------------------------------
+Version 1.0.11 introduces a pure, 100% optional declarative metadata &
+introspection layer (`RegionContentRegistry`) paired with server-authoritative,
+region-scoped tab-completion for `/locate region <region> [biome|structure]`:
+
+1. Optional Region Content Metadata & Inter-Addon Introspection (`RegionContentRegistry` & `RegionalApi`):
+   - Addons can optionally declare which biome IDs, biome tags, structure IDs,
+     and structure tags belong to a region via `RegionalApi.getInstance()`:
+     * `registerRegionBiome(regionId, biomeId)` / `registerRegionBiomes(...)`
+     * `registerRegionBiomeTag(regionId, biomeTag)` / `registerRegionBiomeTags(...)`
+     * `registerRegionStructure(regionId, structureId)` / `registerRegionStructures(...)`
+     * `registerRegionStructureTag(regionId, structureTag)` / `registerRegionStructureTags(...)`
+   - Any third-party mod (map, quest, compass, or bridge addon) can introspect
+     registered region content purely through `RegionalApi` without depending
+     on the registering addon:
+     * `getRegisteredRegionBiomes(regionId)` (automatically includes `BiomeMaskRule` IDs)
+     * `getRegisteredRegionBiomeTags(regionId)` / `hasRegisteredRegionBiomes(regionId)`
+     * `getRegisteredRegionStructures(regionId)` / `getRegisteredRegionStructureTags(regionId)`
+     * `hasRegisteredRegionStructures(regionId)`
+     * `isBiomeRegisteredForRegion(regionId, biomeId | Holder<Biome>)`
+     * `isStructureRegisteredForRegion(regionId, structureId | Holder<Structure>)`
+   - Preserves 100% backward compatibility with existing `RegionDefinition`
+     constructors and incurs zero overhead on worldgen/chunk hot paths.
+
+2. Region-Scoped Server-Authoritative Tab-Completion (`LocateRegionCommand`):
+   - Structure Suggestions (`suggestStructuresForRegion`):
+     * If `<region>` has registered structures or structure tags, tab-completion
+       exclusively suggests those entries (including expanded members of
+       registered `#tags`), keeping suggestions strictly scoped to that region.
+     * If `<region>` has no structure registrations, tab-completion automatically
+       falls back to the global `Registries.STRUCTURE` registry and tags.
+   - Biome Suggestions (`suggestBiomesForRegion`):
+     * If `<region>` has explicit biome/tag registrations OR a dual
+       `BiomeMaskRule` (both surface and cave overrides set), tab-completion
+       exclusively suggests the region's registered/masked biomes and tags.
+     * Otherwise (no explicit registrations and no dual mask), tab-completion
+       automatically falls back to the global `Registries.BIOME` registry and tags.
+   - Works identically across NeoForge, Fabric, and Forge in both Singleplayer
+     and Dedicated Server multiplayer via Brigadier's native `ask_server`
+     suggestion protocol with zero extra network packets.
+
+3. Vanilla-Exact Full-Chunk Structure Discovery (`RegionSpatialLocator`):
+   - Replaced artificial candidate caps (`128`), chunk-load caps (`256`), and
+     main-thread time truncation (`500 ms`) with synchronous, ring-by-ring
+     (`r = 0 .. 100`) chunk verification mirroring vanilla Minecraft's
+     `ChunkGenerator#findNearestMapStructure` + O(1) `RegionalApi#getRegionRawId`
+     pre-filtering and ring-level early exit.
+   - Eliminates false negatives for rare biome-constrained structures (e.g.,
+     `minecraft:village_desert`, `minecraft:woodland_mansion`, modded structures)
+     across repeating regions, unique QuadTree regions, and concentric rings.
+================================================================================

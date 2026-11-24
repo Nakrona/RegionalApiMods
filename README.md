@@ -1,4 +1,4 @@
-# RegionalAPI (`v1.0.9`)
+# RegionalAPI (`v1.0.11`)
 
 **High-Performance Procedural 2D Laguerre-Voronoi Geopolitical World Partitioning & 3D Biome-Masking Engine for Minecraft 1.21.1**
 
@@ -13,11 +13,11 @@
 
 **RegionalAPI** (`mod_id: regionalapi`, package: `com.regionalapi`) is a pure core library mod for **Minecraft 1.21.1 (Java 21)** across **NeoForge, Fabric, and Forge** (Official Mojang Mappings). It partitions the Minecraft world into massive, deterministic, invisible 2D territories (**Regions**) aligned strictly to `16x16` chunk boundaries (**1 Chunk = Maximum 1 Region**) without altering vanilla terrain heightmaps or mutating the native world seed.
 
-Designed around a **One-Way Addon / Bridge Architecture**, `RegionalAPI` provides the spatial math, 3-tier Zero-GC chunk caching, 3D vertical biome masking, `/locate region` command, F3 debug overlay, and cross-loader events so downstream mods (such as `RegionalCobblemonBridge`, `MedieavalRegional`, or RPG/map addons) can bind spawns, structures, and gameplay rules to geopolitical territories in sub-microsecond time.
+Designed around a **One-Way Addon / Bridge Architecture**, `RegionalAPI` provides the spatial math, 3-tier Zero-GC chunk caching, 3D vertical biome masking, optional declarative region biome/structure metadata & introspection (`RegionContentRegistry`), region-constrained `/locate region` command integration with region-scoped tab-completion, F3 debug overlay, and cross-loader events so downstream mods (such as `RegionalCobblemonBridge`, `MedieavalRegional`, or RPG/map addons) can bind spawns, structures, and gameplay rules to geopolitical territories in sub-microsecond time.
 
 ---
 
-## Key Architectural Pillars (`v1.0.9`)
+## Key Architectural Pillars (`v1.0.11`)
 
 1. **Strict Single-Region Per Chunk Guarantee (`1 Chunk = Max 1 Region`)**:
    - Every `16x16` chunk is guaranteed `100%` homogeneous (`isHomogeneous == true`) and belongs to at most 1 region.
@@ -34,10 +34,26 @@ Designed around a **One-Way Addon / Bridge Architecture**, `RegionalAPI` provide
    - **Tier 1**: Server-thread `Long2ShortOpenHashMap` (`serverHomogeneousChunkCache`).
    - **Tier 2**: `IRegionChunkData` Duck Interface injected into `ChunkAccess` (`MixinChunkAccess`), validated in O(1) via `regional$populatedEpoch`, and saved in chunk NBT (`MixinChunkSerializer`) in just **3 bytes per chunk**.
    - **Tier 3**: Lock-free 32-slot per-thread `ThreadLocalRegionCache` ring buffer for concurrent worldgen worker threads.
-6. **Built-in `/locate region <region_id>`, F3 Overlay, & Multi-Loader Events**:
-   - Native `/locate region <id>` command with tab auto-completion and clickable teleport coordinates.
+6. **Built-in `/locate region` Command Suite, F3 Overlay, & Multi-Loader Events**:
+   - Native vanilla `/locate` integration supporting:
+     - `/locate region <region_id>` — locates the nearest matching region (instant QuadTree lookup for unique regions, Voronoi ring search for repeating regions).
+     - `/locate region <region_id> biome <biome_id | #biome_tag>` — locates the nearest biome (or biome tag) strictly inside the specified region, honoring 3D `BiomeMaskRule` overrides with async worker offloading (`Util.backgroundExecutor()`).
+     - `/locate region <region_id> structure <structure_id | #structure_tag>` — locates the nearest structure (or structure tag) strictly inside the specified region using O(1) chunk-homogeneous pre-filtering and vanilla-exact ring-by-ring (`r = 0 .. 100`) `StructureManager` / `ChunkStatus.STRUCTURE_STARTS` verification with zero artificial candidate or time truncation.
+   - **Region-Scoped Server-Authoritative Tab-Completion & Inter-Addon Introspection (`RegionContentRegistry`)**:
+     - Regions using a dual `BiomeMaskRule` automatically filter `/locate region <region> biome` suggestions to their masked biomes.
+     - Addons may optionally declare region-bound biomes, structures, and `#tags` via `RegionalApi` (`registerRegionBiomes`, `registerRegionStructures`, `registerRegionBiomeTag`, `registerRegionStructureTag`) so third-party mods can introspect them (`getRegisteredRegionBiomes`, `getRegisteredRegionStructures`, `isStructureRegisteredForRegion`) and `/locate region <region> [biome|structure]` automatically suggests only that region's registered entries (falling back to global Minecraft registries when none are declared).
    - Displays `Region: <namespace:path>` directly above `Biome:` on the F3 debug screen.
    - Fires `PlayerEnterRegion` and `EntitySpawnInRegion` across NeoForge, Fabric, and Forge.
+
+---
+
+## Commands
+
+```text
+/locate region <region_id>
+/locate region <region_id> biome <biome_id | #biome_tag>
+/locate region <region_id> structure <structure_id | #structure_tag>
+```
 
 ---
 
@@ -45,7 +61,7 @@ Designed around a **One-Way Addon / Bridge Architecture**, `RegionalAPI` provide
 
 - **[RPD & Base Code Design Document](file:///X:/MinecraftProject/RegionalAPI/RegionalApiMods/RPD_DESIGN_AND_BASE_CODE.md)** — Full product requirements, Mermaid architecture diagrams, package index, and base code specifications.
 - **[Plain-Text Architectural Overview (`readme.txt`)](file:///X:/MinecraftProject/RegionalAPI/RegionalApiMods/readme.txt)** — System overview and caching hierarchy.
-- **[Changelog (`Logupdate/changelog.txt`)](file:///X:/MinecraftProject/RegionalAPI/RegionalApiMods/Logupdate/changelog.txt)** — Complete version history from `v1.0.0` to `v1.0.9`.
+- **[Changelog (`Logupdate/changelog.txt`)](file:///X:/MinecraftProject/RegionalAPI/RegionalApiMods/Logupdate/changelog.txt)** — Complete version history from `v1.0.0` to `v1.0.11`.
 
 ---
 
@@ -76,4 +92,16 @@ Query the active region in sub-microsecond O(1) time without allocating `BlockPo
 short rawId = RegionalApi.getInstance().getRegionRawId(serverLevel, blockX, blockZ);
 ResourceLocation regionId = RegionalApi.getInstance().getRegionId(serverLevel, blockX, blockZ);
 RegionDefinition def = RegionalApi.getInstance().getRegionDefinition(serverLevel, blockX, blockZ);
+```
+
+Optionally declare region-bound structures/biomes so other mods can introspect them and `/locate region <region> [biome|structure]` tab-completion automatically scopes suggestions to that region:
+
+```java
+ResourceLocation alola = ResourceLocation.fromNamespaceAndPath("myaddon", "alola");
+api.registerRegionStructure(alola, ResourceLocation.fromNamespaceAndPath("myaddon", "alola_trial"));
+api.registerRegionBiome(alola, ResourceLocation.fromNamespaceAndPath("minecraft", "jungle"));
+
+// Any other mod can query registered region content without depending on your addon:
+Set<ResourceLocation> alolaStructures = api.getRegisteredRegionStructures(alola);
+Set<ResourceLocation> alolaBiomes = api.getRegisteredRegionBiomes(alola);
 ```

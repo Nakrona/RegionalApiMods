@@ -1,4 +1,4 @@
-# RegionalAPI (`v1.0.9`) — Requirements, Product & Technical Design Document (RPD & Base Code Architecture)
+# RegionalAPI (`v1.0.11`) — Requirements, Product & Technical Design Document (RPD & Base Code Architecture)
 
 **Mod ID**: `regionalapi`  
 **Base Package**: `com.regionalapi`  
@@ -121,6 +121,7 @@ sequenceDiagram
 | | `com.regionalapi.core.math.VoronoiEngine2D` | 2D Laguerre-Voronoi engine quantized to canonical chunk center `QuartPos` (`(chunkX << 2) + 2`). |
 | **Region & 3D Biome Core** | `com.regionalapi.core.region.RegionDefinition` | Immutable region metadata (`id`, `weight`, `selectionTicketWeight`, `isUnique`, search radii, `BiomeMaskRule`). |
 | | `com.regionalapi.core.region.RegionRegistry` | Two-phase server freeze/index registry, `FALLBACK_WILDS_ID = 0`, flat ticket array, and QuadTree manager. |
+| | `com.regionalapi.core.region.RegionContentRegistry` | Optional declarative metadata registry mapping regions to registered biome/structure IDs and `#tags` for inter-addon introspection and scoped `/locate` tab-completion. |
 | | `com.regionalapi.core.region.UniqueRegionQuadTree` | Lock-free 2D spatial QuadTree resolving `isUnique == true` region dominance and `/locate` in `< 0.05 ms`. |
 | | `com.regionalapi.core.region.UniqueRegionSavedData` | Persists `isUnique == true` region anchor coordinates in Overworld `DimensionDataStorage` (`regionalapi_unique_regions.dat`). |
 | | `com.regionalapi.core.region.BiomeMaskRule` | 3D vertical biome override (`STATIC_Y_THRESHOLD` & `TERRAIN_FOLLOWING_DEPTH`, Surface/Cave/Dual modes). |
@@ -139,7 +140,8 @@ sequenceDiagram
 | | `com.regionalapi.mixin.client.MixinDebugScreenOverlay` | Injects `"Region: <namespace:path>"` directly above `"Biome:"` on the F3 debug HUD. |
 | **Networking, CLI & SPI** | `com.regionalapi.network.ClientboundSyncRegionalSeedPacket` | S2C `CustomPacketPayload` syncing the SHA-256 salted 64-bit regional seed to clients. |
 | | `com.regionalapi.network.ClientboundSyncPlayerRegionPacket` | S2C `CustomPacketPayload` syncing the player's authoritative current region `ResourceLocation`. |
-| | `com.regionalapi.command.LocateRegionCommand` | Integrates `/locate region <region_id>` with tab completion, QuadTree lookup, and ring search. |
+| | `com.regionalapi.core.search.RegionSpatialLocator` | Zero-GC spatial locator supporting nearest region discovery and async region-constrained biome/structure searches. |
+| | `com.regionalapi.command.LocateRegionCommand` | Integrates `/locate region <region_id> [biome <biome|#tag> \| structure <structure|#tag>]` with full tab completion and clickable coordinates. |
 | | `com.regionalapi.client.ClientRegionTracker` | Holds client-side `currentRegionId` and formats the F3 debug string. |
 | | `com.regionalapi.platform.CommonRegionMovementTracker` | Shared chunk-boundary transition detector and `PlayerEnterRegion` dispatcher. |
 | | `com.regionalapi.platform.IPlatformHelper` | Java SPI interface implemented by `NeoForgePlatformHelper`, `FabricPlatformHelper`, and `ForgePlatformHelper`. |
@@ -197,3 +199,12 @@ Because every chunk is guaranteed homogeneous (`1 chunk = 1 region`), `MixinChun
 - `bytes[1] = (byte) ((id >>> 8) & 0xFF)` (High byte of `short` region ID)
 - `bytes[2] = (byte) (id & 0xFF)` (Low byte of `short` region ID)
 When loading chunks from older worlds that contain legacy 33-byte border arrays (`bytes[0] == 0`), `MixinChunkSerializer.read` automatically upgrades the chunk to the single authoritative homogeneous region ID (`chunkData.regional$setHomogeneous(expectedRegionId)`).
+
+### 4.4 Region-Constrained Spatial Locator (`RegionSpatialLocator.java` & `LocateRegionCommand.java`)
+`LocateRegionCommand` integrates directly into Minecraft's vanilla `/locate` tree (requiring `CommandBuildContext` across NeoForge, Fabric, and Forge):
+- `/locate region <region_id>` — locates the nearest matching region (QuadTree lookup for unique regions, ring search from `r = 0` for repeating regions, and boundary resolution for `regionalapi:wilds` in `FINITE_CENTRALIZED` mode).
+- `/locate region <region_id> biome <biome_id | #biome_tag>` — offloads Zero-GC spiral and multi-anchor search to `Util.backgroundExecutor()`, pre-filtering coordinates in O(1) via `ThreadLocalRegionCache` before invoking `BiomeSource#getNoiseBiome` (honoring 3D `BiomeMaskRule` overrides with dual-override fail-fast).
+- `/locate region <region_id> structure <structure_id | #structure_tag>` — mirrors vanilla Minecraft's `ChunkGenerator#findNearestMapStructure` synchronously on the server thread: evaluates `ConcentricRingsStructurePlacement` and expands ring-by-ring (`r = 0 .. 100`) across `RandomSpreadStructurePlacement` (or exact bounding bounds for `isUnique == true`), skipping out-of-region chunks in O(1) via `RegionalApi#getRegionRawId` and performing full `StructureManager#checkStructurePresence` + `ChunkStatus.STRUCTURE_STARTS` verification with ring-level early exit and zero artificial candidate/time truncation.
+- **Region-Scoped Server-Authoritative Tab-Completion & Inter-Addon Introspection (`RegionContentRegistry`)**:
+  - Addons may optionally declare region-bound biomes, structures, and tags via `RegionalApi` (`registerRegionBiome*`, `registerRegionStructure*`), allowing third-party mods to introspect region content (`getRegisteredRegionBiomes`, `getRegisteredRegionStructures`, `isBiomeRegisteredForRegion`, `isStructureRegisteredForRegion`) without cross-addon dependencies.
+  - When a region declares structures, `/locate region <region_id> structure` suggests strictly those registered structures/tags; when a region declares biomes or uses a dual `BiomeMaskRule`, `/locate region <region_id> biome` suggests strictly those region biomes/tags. Regions without declarations automatically fall back to Minecraft's global registries.

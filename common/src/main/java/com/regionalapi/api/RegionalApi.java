@@ -4,13 +4,21 @@ import com.regionalapi.core.cache.ChunkRegionAttachment;
 import com.regionalapi.core.cache.IRegionChunkData;
 import com.regionalapi.core.cache.ThreadLocalRegionCache;
 import com.regionalapi.core.math.VoronoiEngine2D;
+import com.regionalapi.core.region.RegionContentRegistry;
 import com.regionalapi.core.region.RegionDefinition;
 import com.regionalapi.core.region.RegionRegistry;
 import it.unimi.dsi.fastutil.longs.Long2ShortOpenHashMap;
+import net.minecraft.core.Holder;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.levelgen.structure.Structure;
+
+import java.util.Collection;
+import java.util.Set;
 
 /**
  * Primary public developer facade for **RegionalAPI**.
@@ -49,6 +57,177 @@ public final class RegionalApi {
      */
     public void registerRegion(RegionDefinition definition) {
         RegionRegistry.getInstance().register(definition);
+    }
+
+    // -------------------------------------------------------------------------
+    // Optional Declarative Region Content Metadata & Introspection API
+    // -------------------------------------------------------------------------
+
+    /**
+     * Optionally declares a biome {@link ResourceLocation} associated with {@code regionId}
+     * for inter-addon introspection and region-scoped {@code /locate region <region> biome} tab-completion.
+     *
+     * @param regionId The target region identifier.
+     * @param biomeId  The biome identifier associated with the region.
+     */
+    public void registerRegionBiome(ResourceLocation regionId, ResourceLocation biomeId) {
+        RegionContentRegistry.getInstance().registerBiome(regionId, biomeId);
+    }
+
+    /**
+     * Optionally declares multiple biome {@link ResourceLocation} IDs associated with {@code regionId}.
+     *
+     * @param regionId The target region identifier.
+     * @param biomeIds Collection of biome identifiers associated with the region.
+     */
+    public void registerRegionBiomes(ResourceLocation regionId, Collection<ResourceLocation> biomeIds) {
+        RegionContentRegistry.getInstance().registerBiomes(regionId, biomeIds);
+    }
+
+    /**
+     * Optionally declares a biome {@link TagKey} associated with {@code regionId}.
+     *
+     * @param regionId The target region identifier.
+     * @param biomeTag The biome tag associated with the region.
+     */
+    public void registerRegionBiomeTag(ResourceLocation regionId, TagKey<Biome> biomeTag) {
+        RegionContentRegistry.getInstance().registerBiomeTag(regionId, biomeTag);
+    }
+
+    /**
+     * Optionally declares multiple biome {@link TagKey} entries associated with {@code regionId}.
+     *
+     * @param regionId  The target region identifier.
+     * @param biomeTags Collection of biome tags associated with the region.
+     */
+    public void registerRegionBiomeTags(ResourceLocation regionId, Collection<TagKey<Biome>> biomeTags) {
+        RegionContentRegistry.getInstance().registerBiomeTags(regionId, biomeTags);
+    }
+
+    /**
+     * Optionally declares a structure {@link ResourceLocation} associated with {@code regionId}
+     * for inter-addon introspection and region-scoped {@code /locate region <region> structure} tab-completion.
+     *
+     * @param regionId    The target region identifier.
+     * @param structureId The structure identifier associated with the region.
+     */
+    public void registerRegionStructure(ResourceLocation regionId, ResourceLocation structureId) {
+        RegionContentRegistry.getInstance().registerStructure(regionId, structureId);
+    }
+
+    /**
+     * Optionally declares multiple structure {@link ResourceLocation} IDs associated with {@code regionId}.
+     *
+     * @param regionId     The target region identifier.
+     * @param structureIds Collection of structure identifiers associated with the region.
+     */
+    public void registerRegionStructures(ResourceLocation regionId, Collection<ResourceLocation> structureIds) {
+        RegionContentRegistry.getInstance().registerStructures(regionId, structureIds);
+    }
+
+    /**
+     * Optionally declares a structure {@link TagKey} associated with {@code regionId}.
+     *
+     * @param regionId     The target region identifier.
+     * @param structureTag The structure tag associated with the region.
+     */
+    public void registerRegionStructureTag(ResourceLocation regionId, TagKey<Structure> structureTag) {
+        RegionContentRegistry.getInstance().registerStructureTag(regionId, structureTag);
+    }
+
+    /**
+     * Optionally declares multiple structure {@link TagKey} entries associated with {@code regionId}.
+     *
+     * @param regionId      The target region identifier.
+     * @param structureTags Collection of structure tags associated with the region.
+     */
+    public void registerRegionStructureTags(ResourceLocation regionId, Collection<TagKey<Structure>> structureTags) {
+        RegionContentRegistry.getInstance().registerStructureTags(regionId, structureTags);
+    }
+
+    /**
+     * Returns an unmodifiable set of biome IDs registered for {@code regionId}, automatically
+     * including any surface/cave biome IDs declared by the region's {@link com.regionalapi.core.region.BiomeMaskRule}.
+     *
+     * @param regionId The region identifier to inspect.
+     * @return Unmodifiable set of biome identifiers (empty if none declared).
+     */
+    public Set<ResourceLocation> getRegisteredRegionBiomes(ResourceLocation regionId) {
+        return RegionContentRegistry.getInstance().getRegisteredBiomes(regionId);
+    }
+
+    /**
+     * Returns an unmodifiable set of biome {@link TagKey} entries explicitly registered for {@code regionId}.
+     *
+     * @param regionId The region identifier to inspect.
+     * @return Unmodifiable set of biome tags (empty if none declared).
+     */
+    public Set<TagKey<Biome>> getRegisteredRegionBiomeTags(ResourceLocation regionId) {
+        return RegionContentRegistry.getInstance().getRegisteredBiomeTags(regionId);
+    }
+
+    /**
+     * Returns {@code true} if {@code regionId} has any registered biomes/tags or a {@link com.regionalapi.core.region.BiomeMaskRule}.
+     */
+    public boolean hasRegisteredRegionBiomes(ResourceLocation regionId) {
+        return RegionContentRegistry.getInstance().hasRegisteredBiomes(regionId);
+    }
+
+    /**
+     * Returns an unmodifiable set of structure IDs explicitly registered for {@code regionId}.
+     *
+     * @param regionId The region identifier to inspect.
+     * @return Unmodifiable set of structure identifiers (empty if none declared).
+     */
+    public Set<ResourceLocation> getRegisteredRegionStructures(ResourceLocation regionId) {
+        return RegionContentRegistry.getInstance().getRegisteredStructures(regionId);
+    }
+
+    /**
+     * Returns an unmodifiable set of structure {@link TagKey} entries explicitly registered for {@code regionId}.
+     *
+     * @param regionId The region identifier to inspect.
+     * @return Unmodifiable set of structure tags (empty if none declared).
+     */
+    public Set<TagKey<Structure>> getRegisteredRegionStructureTags(ResourceLocation regionId) {
+        return RegionContentRegistry.getInstance().getRegisteredStructureTags(regionId);
+    }
+
+    /**
+     * Returns {@code true} if {@code regionId} has any explicitly registered structures or structure tags.
+     */
+    public boolean hasRegisteredRegionStructures(ResourceLocation regionId) {
+        return RegionContentRegistry.getInstance().hasRegisteredStructures(regionId);
+    }
+
+    /**
+     * Checks whether {@code biomeId} is directly registered for {@code regionId} or declared in its {@link com.regionalapi.core.region.BiomeMaskRule}.
+     */
+    public boolean isBiomeRegisteredForRegion(ResourceLocation regionId, ResourceLocation biomeId) {
+        return RegionContentRegistry.getInstance().isBiomeRegistered(regionId, biomeId);
+    }
+
+    /**
+     * Tag-aware check of whether {@code biomeHolder} matches any biome ID, biome tag,
+     * or {@link com.regionalapi.core.region.BiomeMaskRule} registered for {@code regionId}.
+     */
+    public boolean isBiomeRegisteredForRegion(ResourceLocation regionId, Holder<Biome> biomeHolder) {
+        return RegionContentRegistry.getInstance().isBiomeRegistered(regionId, biomeHolder);
+    }
+
+    /**
+     * Checks whether {@code structureId} is directly registered for {@code regionId}.
+     */
+    public boolean isStructureRegisteredForRegion(ResourceLocation regionId, ResourceLocation structureId) {
+        return RegionContentRegistry.getInstance().isStructureRegistered(regionId, structureId);
+    }
+
+    /**
+     * Tag-aware check of whether {@code structureHolder} matches any structure ID or structure tag
+     * registered for {@code regionId}.
+     */
+    public boolean isStructureRegisteredForRegion(ResourceLocation regionId, Holder<Structure> structureHolder) {
+        return RegionContentRegistry.getInstance().isStructureRegistered(regionId, structureHolder);
     }
 
     /**
